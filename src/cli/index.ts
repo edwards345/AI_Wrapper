@@ -1,23 +1,34 @@
 #!/usr/bin/env node
 
 import { Command } from "commander";
+import { createInterface } from "node:readline/promises";
 import { writeFileSync } from "node:fs";
 import { loadConfig } from "../config/loader.js";
+import { runConfigWizard, needsSetup } from "../config/wizard.js";
 import { MODELS, findModel, type ProviderName } from "../engine/models.js";
 import { runAll } from "../engine/runner.js";
+import { combinedSummary, consensusSummary } from "../engine/summarizer.js";
 import { createAnthropicClient } from "../providers/anthropic.js";
 import { createOpenAIClient } from "../providers/openai.js";
 import { createGeminiClient } from "../providers/gemini.js";
 import { createXAIClient } from "../providers/xai.js";
-import type { ProviderClient } from "../providers/types.js";
+import type { ProviderClient, ProviderResult } from "../providers/types.js";
 import {
-  createSpinners,
-  stopAllSpinners,
-  printResults,
+  createProgressSpinner,
+  pauseSpinner,
+  resumeSpinner,
+  markDoneAndPrint,
+  markPending,
+  printStreamHeader,
+  writeStreamToken,
+  printStreamFooter,
+  printResult,
   printModelList,
   printSummary,
   resultsToMarkdown,
 } from "./display.js";
+import chalk from "chalk";
+import ora from "ora";
 
 const TIER_PRESETS: Record<string, string> = {
   flagship: "flagship",
@@ -35,43 +46,38 @@ const program = new Command()
   .option("-s, --system <prompt>", "System prompt")
   .option("--summarize", "Generate a combined summary of all responses")
   .option("--consensus", "Generate a consensus/voted summary")
-  .option("--preset <tier>", "Model preset: flagship, balanced, fast")
+  .option("--preset <tier>", "Model preset: flagship, balanced, fast", "fast")
   .option("--list-models", "List all available models")
+  .option("-i, --interactive", "Interactive mode — prompt loop")
   .option("-o, --output <file>", "Save results to a markdown file")
-  .option("--timeout <ms>", "Timeout per provider in milliseconds", "30000");
+  .option("--no-stream", "Disable streaming (wait for full response)")
+  .option("--config", "Re-run API key setup wizard")
+  .option("--timeout <ms>", "Timeout per provider in milliseconds", "60000");
 
 program.parse();
 
 const opts = program.opts();
 
-async function main(): Promise<void> {
-  // Handle --list-models
-  if (opts.listModels) {
-    printModelList();
-    return;
-  }
+interface Selection {
+  client: ProviderClient;
+  model: string;
+  label: string;
+  provider: ProviderName;
+}
 
-  const prompt = program.args[0];
-  if (!prompt) {
-    program.help();
-    return;
-  }
-
-  const config = loadConfig();
-
-  // Build provider clients from available keys
-  const clients: Record<ProviderName, ProviderClient | null> = {
+function buildClients(config: ReturnType<typeof loadConfig>) {
+  return {
     claude: config.anthropicApiKey ? createAnthropicClient(config.anthropicApiKey) : null,
     openai: config.openaiApiKey ? createOpenAIClient(config.openaiApiKey) : null,
     gemini: config.geminiApiKey ? createGeminiClient(config.geminiApiKey) : null,
     grok: config.xaiApiKey ? createXAIClient(config.xaiApiKey) : null,
-  };
+  } as Record<ProviderName, ProviderClient | null>;
+}
 
-  // Determine which models to run
-  let selections: { client: ProviderClient; model: string; label: string; provider: ProviderName }[] = [];
+function buildSelections(clients: Record<ProviderName, ProviderClient | null>): Selection[] {
+  const selections: Selection[] = [];
 
   if (opts.models) {
-    // Explicit model IDs
     const modelIds = (opts.models as string).split(",").map((s: string) => s.trim());
     for (const id of modelIds) {
       const found = findModel(id);
@@ -81,29 +87,19 @@ async function main(): Promise<void> {
       }
       const client = clients[found.provider];
       if (!client) {
-        console.error(
-          `No API key for ${found.provider}. Set it in .env or ~/.aiwrapper/.env`
-        );
+        console.error(`No API key for ${found.provider}. Set it in .env or ~/.aiwrapper/.env`);
         process.exit(1);
       }
-      selections.push({
-        client,
-        model: found.model.id,
-        label: found.model.label,
-        provider: found.provider,
-      });
+      selections.push({ client, model: found.model.id, label: found.model.label, provider: found.provider });
     }
   } else {
-    // Determine providers
     let providerNames: ProviderName[];
     if (opts.providers) {
       providerNames = (opts.providers as string).split(",").map((s: string) => s.trim()) as ProviderName[];
     } else {
-      // Use all providers that have keys configured
       providerNames = (Object.keys(clients) as ProviderName[]).filter((p) => clients[p] !== null);
     }
 
-    // Determine tier
     const tier = TIER_PRESETS[opts.preset as string] ?? "flagship";
 
     for (const provider of providerNames) {
@@ -112,32 +108,148 @@ async function main(): Promise<void> {
         console.error(`No API key for ${provider}. Skipping.`);
         continue;
       }
-      // Pick the first model matching the tier, or fall back to the first model
-      const model =
-        MODELS[provider].find((m) => m.tier === tier) ?? MODELS[provider][0];
+      const model = MODELS[provider].find((m) => m.tier === tier) ?? MODELS[provider][0];
       selections.push({ client, model: model.id, label: model.label, provider });
     }
   }
 
-  if (selections.length === 0) {
-    console.error("No providers available. Add API keys to .env or ~/.aiwrapper/.env");
-    process.exit(1);
-  }
+  return selections;
+}
 
-  // Show spinners and run
-  const spinners = createSpinners(
-    selections.map((s) => ({ provider: s.provider, label: s.label }))
-  );
+async function runPrompt(
+  prompt: string,
+  selections: Selection[],
+  config: ReturnType<typeof loadConfig>
+): Promise<ProviderResult[]> {
+  const progress = createProgressSpinner(selections.map((s) => s.label));
+  const useStream = opts.stream !== false;
+
+  // Build a lookup from label to selection info
+  const selMap = new Map(selections.map((s) => [s.label, s]));
 
   const results = await runAll(selections, {
     prompt,
     systemPrompt: opts.system as string | undefined,
     maxTokens: 2048,
     timeoutMs: parseInt(opts.timeout as string, 10),
+    stream: useStream,
+
+    // Non-streaming callback
+    onResult: (result) => {
+      markDoneAndPrint(progress, result);
+    },
+
+    // Streaming callbacks
+    onStreamStart: (label, provider) => {
+      pauseSpinner(progress);
+      markPending(progress, label);
+      const sel = selMap.get(label)!;
+      printStreamHeader(label, sel.model, provider);
+    },
+    onStreamToken: (_label, token) => {
+      writeStreamToken(token);
+    },
+    onStreamEnd: (result) => {
+      printStreamFooter(result);
+      resumeSpinner(progress);
+    },
   });
 
-  stopAllSpinners(spinners);
-  printResults(results);
+  // Combined summary
+  if (opts.summarize && config.anthropicApiKey) {
+    const spinner = ora(chalk.cyan("Generating combined summary...")).start();
+    try {
+      const summary = await combinedSummary(config.anthropicApiKey, prompt, results);
+      spinner.stop();
+      printSummary("Combined Summary", summary);
+    } catch (err) {
+      spinner.stop();
+      console.error(chalk.red(`Summary error: ${err instanceof Error ? err.message : err}`));
+    }
+  }
+
+  // Consensus summary
+  if (opts.consensus && config.anthropicApiKey) {
+    const spinner = ora(chalk.cyan("Analyzing consensus...")).start();
+    try {
+      const consensus = await consensusSummary(config.anthropicApiKey, prompt, results);
+      spinner.stop();
+      printSummary("Consensus Analysis", consensus);
+    } catch (err) {
+      spinner.stop();
+      console.error(chalk.red(`Consensus error: ${err instanceof Error ? err.message : err}`));
+    }
+  }
+
+  if ((opts.summarize || opts.consensus) && !config.anthropicApiKey) {
+    console.error(chalk.red("Summarize/consensus requires ANTHROPIC_API_KEY to be set."));
+  }
+
+  return results;
+}
+
+async function interactiveMode(
+  selections: Selection[],
+  config: ReturnType<typeof loadConfig>
+): Promise<void> {
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+
+  console.log(chalk.cyan.bold("\n  AI Wrapper — Interactive Mode"));
+  console.log(chalk.dim(`  ${selections.length} provider(s) active. Type "exit" or Ctrl+C to quit.\n`));
+
+  while (true) {
+    const prompt = await rl.question(chalk.cyan("? "));
+
+    if (!prompt.trim()) continue;
+    if (prompt.trim().toLowerCase() === "exit") break;
+
+    await runPrompt(prompt, selections, config);
+  }
+
+  rl.close();
+}
+
+async function main(): Promise<void> {
+  if (opts.listModels) {
+    printModelList();
+    return;
+  }
+
+  // Config wizard
+  if (opts.config) {
+    await runConfigWizard();
+    return;
+  }
+
+  // First-run setup
+  if (needsSetup() && !program.args[0] && !opts.interactive) {
+    console.log(chalk.yellow("\n  No API keys found. Let's set them up.\n"));
+    await runConfigWizard();
+    return;
+  }
+
+  const config = loadConfig();
+  const clients = buildClients(config);
+  const selections = buildSelections(clients);
+
+  if (selections.length === 0) {
+    console.error("No providers available. Add API keys to .env or ~/.aiwrapper/.env");
+    process.exit(1);
+  }
+
+  // Interactive mode
+  if (opts.interactive) {
+    await interactiveMode(selections, config);
+    return;
+  }
+
+  const prompt = program.args[0];
+  if (!prompt) {
+    program.help();
+    return;
+  }
+
+  const results = await runPrompt(prompt, selections, config);
 
   // Save to file if requested
   if (opts.output) {

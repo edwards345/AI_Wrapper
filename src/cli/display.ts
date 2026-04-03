@@ -18,69 +18,119 @@ const PROVIDER_LABELS: Record<ProviderName, string> = {
   grok: "Grok",
 };
 
-export function createSpinners(
-  selections: { provider: ProviderName; label: string }[]
-): Map<string, Ora> {
-  const spinners = new Map<string, Ora>();
-  for (const sel of selections) {
-    const color = PROVIDER_COLORS[sel.provider];
-    const spinner = ora({
-      text: color(`${sel.label} — waiting...`),
-      prefixText: "",
-    }).start();
-    spinners.set(sel.label, spinner);
-  }
-  return spinners;
+export interface ProgressSpinner {
+  spinner: Ora;
+  pending: Set<string>;
 }
 
-export function stopSpinner(spinners: Map<string, Ora>, label: string, success: boolean): void {
-  const spinner = spinners.get(label);
-  if (!spinner) return;
-  if (success) {
-    spinner.succeed(chalk.dim(`${label} — done`));
+export function createProgressSpinner(labels: string[]): ProgressSpinner {
+  const pending = new Set(labels);
+  const spinner = ora({
+    text: formatPending(pending),
+  }).start();
+  return { spinner, pending };
+}
+
+export function pauseSpinner(progress: ProgressSpinner): void {
+  if (progress.spinner.isSpinning) {
+    progress.spinner.stop();
+  }
+}
+
+export function resumeSpinner(progress: ProgressSpinner): void {
+  if (progress.pending.size > 0 && !progress.spinner.isSpinning) {
+    progress.spinner.text = formatPending(progress.pending);
+    progress.spinner.start();
+  }
+}
+
+export function markDoneAndPrint(progress: ProgressSpinner, result: ProviderResult): void {
+  progress.pending.delete(result.label);
+  progress.spinner.stop();
+  printResult(result);
+
+  if (progress.pending.size > 0) {
+    progress.spinner.text = formatPending(progress.pending);
+    progress.spinner.start();
+  }
+}
+
+export function markPending(progress: ProgressSpinner, label: string): void {
+  progress.pending.delete(label);
+  if (progress.pending.size > 0) {
+    progress.spinner.text = formatPending(progress.pending);
   } else {
-    spinner.fail(chalk.dim(`${label} — failed`));
+    progress.spinner.stop();
   }
 }
 
-export function stopAllSpinners(spinners: Map<string, Ora>): void {
-  for (const spinner of spinners.values()) {
-    if (spinner.isSpinning) spinner.stop();
+export function stopProgress(progress: ProgressSpinner): void {
+  if (progress.spinner.isSpinning) {
+    progress.spinner.stop();
   }
 }
 
-export function printResults(results: ProviderResult[]): void {
+function formatPending(pending: Set<string>): string {
+  return chalk.dim(`Waiting for: ${[...pending].join(", ")}`);
+}
+
+// --- Streaming display ---
+
+export function printStreamHeader(label: string, model: string, provider: ProviderName): void {
+  const color = PROVIDER_COLORS[provider];
+  const divider = color("─".repeat(60));
+  console.log(divider);
+  console.log(color(`  ${label}`) + chalk.dim(` (${model})`));
+  console.log(divider);
   console.log("");
+}
 
-  for (const r of results) {
-    const color = PROVIDER_COLORS[r.provider];
-    const divider = color("─".repeat(60));
+export function writeStreamToken(token: string): void {
+  process.stdout.write(token);
+}
 
-    console.log(divider);
-    console.log(
-      color(`  ${r.label}`) +
-        chalk.dim(` (${r.model})`) +
-        chalk.dim(` — `) +
-        formatLatency(r.latencyMs)
-    );
-    console.log(divider);
+export function printStreamFooter(r: ProviderResult): void {
+  // Newline after streamed content
+  console.log("\n");
+  console.log(
+    chalk.dim(`  ${formatLatency(r.latencyMs)}`) +
+    (r.inputTokens !== undefined
+      ? chalk.dim(` · ${r.inputTokens} in / ${r.outputTokens ?? "?"} out`)
+      : "")
+  );
+  console.log("");
+}
 
-    if (r.status === "success") {
-      if (r.inputTokens !== undefined || r.outputTokens !== undefined) {
-        console.log(
-          chalk.dim(`  Tokens: ${r.inputTokens ?? "?"} in / ${r.outputTokens ?? "?"} out`)
-        );
-      }
-      console.log("");
-      console.log(indent(r.content));
-    } else if (r.status === "timeout") {
-      console.log(chalk.red(`  ⏱  Timed out after ${r.latencyMs}ms`));
-    } else {
-      console.log(chalk.red(`  Error: ${r.error}`));
+// --- Non-streaming display ---
+
+export function printResult(r: ProviderResult): void {
+  const color = PROVIDER_COLORS[r.provider];
+  const divider = color("─".repeat(60));
+
+  console.log(divider);
+  console.log(
+    color(`  ${r.label}`) +
+      chalk.dim(` (${r.model})`) +
+      chalk.dim(` — `) +
+      formatLatency(r.latencyMs)
+  );
+  console.log(divider);
+
+  if (r.status === "success") {
+    if (r.inputTokens !== undefined || r.outputTokens !== undefined) {
+      console.log(
+        chalk.dim(`  Tokens: ${r.inputTokens ?? "?"} in / ${r.outputTokens ?? "?"} out`)
+      );
     }
-
     console.log("");
+    console.log(indent(r.content));
+  } else if (r.status === "timeout") {
+    console.log(chalk.red(`  Timed out after ${r.latencyMs}ms`));
+  } else {
+    console.log(chalk.red(`  Error: ${r.error}`));
   }
+
+  console.log("");
 }
 
 export function printModelList(): void {

@@ -15,6 +15,7 @@ export interface ProviderResult {
 export interface ProviderClient {
   name: ProviderName;
   chat(params: ChatParams): Promise<ProviderResult>;
+  chatStream?(params: ChatParams, onToken: (token: string) => void): Promise<ProviderResult>;
 }
 
 export interface ChatParams {

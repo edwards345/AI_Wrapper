@@ -11,11 +11,11 @@ const ENV_FILE = join(CONFIG_DIR, ".env");
 export function loadConfig(): AppConfig {
   // Load .env from ~/.aiwrapper/.env if it exists
   if (existsSync(ENV_FILE)) {
-    loadDotenv({ path: ENV_FILE });
+    loadDotenv({ path: ENV_FILE, quiet: true });
   }
 
   // Also load .env from project root (for development)
-  loadDotenv();
+  loadDotenv({ quiet: true });
 
   // Build config from environment variables
   const envConfig: AppConfig = {

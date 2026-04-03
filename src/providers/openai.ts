@@ -1,8 +1,18 @@
 import OpenAI from "openai";
 import type { ProviderClient, ChatParams, ProviderResult } from "./types.js";
+import { friendlyError } from "./errors.js";
 
 export function createOpenAIClient(apiKey: string): ProviderClient {
   const client = new OpenAI({ apiKey });
+
+  function buildMessages(params: ChatParams): OpenAI.Chat.Completions.ChatCompletionMessageParam[] {
+    const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [];
+    if (params.systemPrompt) {
+      messages.push({ role: "system", content: params.systemPrompt });
+    }
+    messages.push({ role: "user", content: params.prompt });
+    return messages;
+  }
 
   return {
     name: "openai",
@@ -11,16 +21,9 @@ export function createOpenAIClient(apiKey: string): ProviderClient {
       const start = performance.now();
 
       try {
-        const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [];
-
-        if (params.systemPrompt) {
-          messages.push({ role: "system", content: params.systemPrompt });
-        }
-        messages.push({ role: "user", content: params.prompt });
-
         const response = await client.chat.completions.create({
           model: params.model,
-          messages,
+          messages: buildMessages(params),
           max_completion_tokens: params.maxTokens ?? 1024,
         });
 
@@ -46,7 +49,61 @@ export function createOpenAIClient(apiKey: string): ProviderClient {
           status: "error",
           content: "",
           latencyMs,
-          error: err instanceof Error ? err.message : String(err),
+          error: friendlyError(err),
+        };
+      }
+    },
+
+    async chatStream(params: ChatParams, onToken: (token: string) => void): Promise<ProviderResult> {
+      const start = performance.now();
+
+      try {
+        const stream = await client.chat.completions.create({
+          model: params.model,
+          messages: buildMessages(params),
+          max_completion_tokens: params.maxTokens ?? 1024,
+          stream: true,
+          stream_options: { include_usage: true },
+        });
+
+        let content = "";
+        let inputTokens: number | undefined;
+        let outputTokens: number | undefined;
+
+        for await (const chunk of stream) {
+          const delta = chunk.choices[0]?.delta?.content;
+          if (delta) {
+            content += delta;
+            onToken(delta);
+          }
+          if (chunk.usage) {
+            inputTokens = chunk.usage.prompt_tokens;
+            outputTokens = chunk.usage.completion_tokens;
+          }
+        }
+
+        const latencyMs = Math.round(performance.now() - start);
+
+        return {
+          provider: "openai",
+          model: params.model,
+          label: params.label,
+          status: "success",
+          content,
+          latencyMs,
+          inputTokens,
+          outputTokens,
+        };
+      } catch (err) {
+        const latencyMs = Math.round(performance.now() - start);
+        return {
+          provider: "openai",
+          model: params.model,
+          label: params.label,
+          status: "error",
+          content: "",
+          latencyMs,
+          error: friendlyError(err),
         };
       }
     },
