@@ -14,6 +14,16 @@
     "declarationMap": true,
     "sourceMap": true
   },
-  "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist"]
+  "include": [
+    "src/cli/**/*",
+    "src/config/**/*",
+    "src/engine/**/*",
+    "src/providers/**/*",
+    "src/test/**/*",
+    "src/web/server.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist"
+  ]
 }

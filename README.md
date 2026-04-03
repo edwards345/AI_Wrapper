@@ -127,14 +127,35 @@ src/
     └── runner.test.ts    # Multi-provider test
 ```
 
+## Web App
+
+```bash
+# Start the server
+npm run server
+
+# Open http://localhost:3456 in your browser
+```
+
+Features: model selector sidebar, prompt input, streaming response cards, combined summary, consensus analysis.
+
+## Windows 11 Installation
+
+Download the repo and run the installer:
+```powershell
+powershell -ExecutionPolicy Bypass -File windows\install.ps1
+```
+
+This installs Node.js/Git if needed, sets up dependencies, prompts for API keys, and creates a Desktop shortcut. Double-click "AI Wrapper" to launch.
+
 ## Roadmap
 
 - [x] Sprint 1 — Core foundation (providers, runner, config)
 - [x] Sprint 2 — CLI & display (commander, chalk, markdown export)
-- [ ] Sprint 3 — Intelligence layer (summarizer, consensus, interactive mode)
-- [ ] Sprint 4 — Polish (streaming, config wizard, presets)
-- [ ] Sprint 5 — Web app (Express + React + Tailwind)
+- [x] Sprint 3 — Intelligence layer (summarizer, consensus, interactive mode)
+- [x] Sprint 4 — Polish (streaming, config wizard, presets)
+- [x] Sprint 5 — Web app (Express + React + Tailwind)
 
 ## License
 
 MIT
+
