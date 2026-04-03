@@ -48,7 +48,7 @@ app.get("/api/models", (_req, res) => {
 
 // POST /api/run — run prompt with SSE streaming
 app.post("/api/run", (req, res) => {
-  const { prompt, systemPrompt, models: modelIds, providers, preset, maxTokens, stream } = req.body;
+  const { prompt, systemPrompt, models: modelIds, providers, preset, maxTokens, stream, messages } = req.body;
 
   if (!prompt) {
     res.status(400).json({ error: "prompt is required" });
@@ -107,6 +107,7 @@ app.post("/api/run", (req, res) => {
     runAll(selections, {
       prompt,
       systemPrompt,
+      messages,
       maxTokens: maxTokens ?? 2048,
       stream: true,
       onStreamStart: (label, provider) => {
@@ -137,6 +138,7 @@ app.post("/api/run", (req, res) => {
   runAll(selections, {
     prompt,
     systemPrompt,
+    messages,
     maxTokens: maxTokens ?? 2048,
   }).then((results) => {
     res.json({ results });

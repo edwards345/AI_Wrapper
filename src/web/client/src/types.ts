@@ -18,6 +18,20 @@ export interface ProviderResult {
   error?: string;
 }
 
+export interface ChatMessage {
+  role: "user" | "assistant";
+  content: string;
+}
+
+export interface SavedChat {
+  id: string;
+  title: string;
+  timestamp: number;
+  messages: ChatMessage[];
+  selectedModels: string[];
+  systemPrompt?: string;
+}
+
 export interface ModelsResponse {
   models: Record<ProviderName, ModelDef[]>;
   availableProviders: ProviderName[];

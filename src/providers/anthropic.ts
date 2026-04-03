@@ -2,6 +2,18 @@ import Anthropic from "@anthropic-ai/sdk";
 import type { ProviderClient, ChatParams, ProviderResult } from "./types.js";
 import { friendlyError } from "./errors.js";
 
+function buildMessages(params: ChatParams): Anthropic.MessageParam[] {
+  if (params.messages?.length) {
+    const msgs: Anthropic.MessageParam[] = params.messages.map((m) => ({
+      role: m.role,
+      content: m.content,
+    }));
+    msgs.push({ role: "user", content: params.prompt });
+    return msgs;
+  }
+  return [{ role: "user", content: params.prompt }];
+}
+
 export function createAnthropicClient(apiKey: string): ProviderClient {
   const client = new Anthropic({ apiKey });
 
@@ -16,7 +28,7 @@ export function createAnthropicClient(apiKey: string): ProviderClient {
           model: params.model,
           max_tokens: params.maxTokens ?? 1024,
           system: params.systemPrompt ?? "",
-          messages: [{ role: "user", content: params.prompt }],
+          messages: buildMessages(params),
         });
 
         const latencyMs = Math.round(performance.now() - start);
@@ -57,7 +69,7 @@ export function createAnthropicClient(apiKey: string): ProviderClient {
           model: params.model,
           max_tokens: params.maxTokens ?? 1024,
           system: params.systemPrompt ?? "",
-          messages: [{ role: "user", content: params.prompt }],
+          messages: buildMessages(params),
         });
 
         let content = "";

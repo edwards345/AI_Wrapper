@@ -1,6 +1,20 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { GoogleGenerativeAI, type Content } from "@google/generative-ai";
 import type { ProviderClient, ChatParams, ProviderResult } from "./types.js";
 import { friendlyError } from "./errors.js";
+
+function buildContents(params: ChatParams): Content[] {
+  const contents: Content[] = [];
+  if (params.messages?.length) {
+    for (const m of params.messages) {
+      contents.push({
+        role: m.role === "assistant" ? "model" : "user",
+        parts: [{ text: m.content }],
+      });
+    }
+  }
+  contents.push({ role: "user", parts: [{ text: params.prompt }] });
+  return contents;
+}
 
 export function createGeminiClient(apiKey: string): ProviderClient {
   const genAI = new GoogleGenerativeAI(apiKey);
@@ -18,7 +32,7 @@ export function createGeminiClient(apiKey: string): ProviderClient {
         });
 
         const result = await model.generateContent({
-          contents: [{ role: "user", parts: [{ text: params.prompt }] }],
+          contents: buildContents(params),
           generationConfig: {
             maxOutputTokens: params.maxTokens ?? 1024,
           },
@@ -63,7 +77,7 @@ export function createGeminiClient(apiKey: string): ProviderClient {
         });
 
         const result = await model.generateContentStream({
-          contents: [{ role: "user", parts: [{ text: params.prompt }] }],
+          contents: buildContents(params),
           generationConfig: {
             maxOutputTokens: params.maxTokens ?? 1024,
           },

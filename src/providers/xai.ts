@@ -13,6 +13,11 @@ export function createXAIClient(apiKey: string): ProviderClient {
     if (params.systemPrompt) {
       messages.push({ role: "system", content: params.systemPrompt });
     }
+    if (params.messages?.length) {
+      for (const m of params.messages) {
+        messages.push({ role: m.role, content: m.content });
+      }
+    }
     messages.push({ role: "user", content: params.prompt });
     return messages;
   }

@@ -1,4 +1,4 @@
-import type { ProviderClient, ProviderResult, ChatParams } from "../providers/types.js";
+import type { ProviderClient, ProviderResult, ChatParams, ChatMessage } from "../providers/types.js";
 import type { ProviderName } from "./models.js";
 
 const DEFAULT_TIMEOUT_MS = 60_000;
@@ -6,6 +6,7 @@ const DEFAULT_TIMEOUT_MS = 60_000;
 export interface RunParams {
   prompt: string;
   systemPrompt?: string;
+  messages?: ChatMessage[];
   maxTokens?: number;
   timeoutMs?: number;
   stream?: boolean;
@@ -62,6 +63,7 @@ export async function runAll(
         label: sel.label,
         prompt: params.prompt,
         systemPrompt: params.systemPrompt,
+        messages: params.messages,
         maxTokens: params.maxTokens,
       };
 

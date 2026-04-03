@@ -18,10 +18,16 @@ export interface ProviderClient {
   chatStream?(params: ChatParams, onToken: (token: string) => void): Promise<ProviderResult>;
 }
 
+export interface ChatMessage {
+  role: "user" | "assistant";
+  content: string;
+}
+
 export interface ChatParams {
   model: string;
   label: string;
   prompt: string;
   systemPrompt?: string;
   maxTokens?: number;
+  messages?: ChatMessage[];
 }
