@@ -60,31 +60,36 @@ export function runPrompt(options: RunOptions): () => void {
       let eventType = "";
       for (const line of lines) {
         if (line.startsWith("event: ")) {
-          eventType = line.slice(7);
+          eventType = line.slice(7).trim();
         } else if (line.startsWith("data: ") && eventType) {
-          const data = JSON.parse(line.slice(6));
-          switch (eventType) {
-            case "stream-start":
-              options.onStreamStart?.(data.label, data.provider);
-              break;
-            case "stream-token":
-              options.onStreamToken?.(data.label, data.token);
-              break;
-            case "stream-end":
-              options.onStreamEnd?.(data as ProviderResult);
-              break;
-            case "result":
-              options.onResult?.(data as ProviderResult);
-              break;
-            case "done":
-              options.onDone?.(data.results as ProviderResult[]);
-              break;
-            case "error":
-              options.onError?.(data.error);
-              break;
+          try {
+            const data = JSON.parse(line.slice(6));
+            switch (eventType) {
+              case "stream-start":
+                options.onStreamStart?.(data.label, data.provider);
+                break;
+              case "stream-token":
+                options.onStreamToken?.(data.label, data.token);
+                break;
+              case "stream-end":
+                options.onStreamEnd?.(data as ProviderResult);
+                break;
+              case "result":
+                options.onResult?.(data as ProviderResult);
+                break;
+              case "done":
+                options.onDone?.(data.results as ProviderResult[]);
+                break;
+              case "error":
+                options.onError?.(data.error);
+                break;
+            }
+          } catch {
+            // skip malformed JSON
           }
           eventType = "";
         }
+        // blank lines don't reset eventType — only data lines do
       }
     }
   }).catch((err) => {

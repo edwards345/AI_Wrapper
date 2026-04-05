@@ -68,22 +68,15 @@ export function createOpenAIClient(apiKey: string): ProviderClient {
           messages: buildMessages(params),
           max_completion_tokens: params.maxTokens ?? 1024,
           stream: true,
-          stream_options: { include_usage: true },
         });
 
         let content = "";
-        let inputTokens: number | undefined;
-        let outputTokens: number | undefined;
 
         for await (const chunk of stream) {
           const delta = chunk.choices[0]?.delta?.content;
           if (delta) {
             content += delta;
             onToken(delta);
-          }
-          if (chunk.usage) {
-            inputTokens = chunk.usage.prompt_tokens;
-            outputTokens = chunk.usage.completion_tokens;
           }
         }
 
@@ -96,8 +89,6 @@ export function createOpenAIClient(apiKey: string): ProviderClient {
           status: "success",
           content,
           latencyMs,
-          inputTokens,
-          outputTokens,
         };
       } catch (err) {
         const latencyMs = Math.round(performance.now() - start);
