@@ -26,6 +26,8 @@ function buildMessages(params: ChatParams): Anthropic.MessageParam[] {
           type: "document",
           source: { type: "base64", media_type: "application/pdf", data: att.data },
         });
+      } else if (att.type === "text") {
+        content.push({ type: "text", text: `[File: ${att.name}]\n${att.data}` });
       }
     }
   }

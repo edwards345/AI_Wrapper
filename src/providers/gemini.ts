@@ -17,9 +17,13 @@ function buildContents(params: ChatParams): Content[] {
   const parts: Content["parts"] = [];
   if (params.attachments?.length) {
     for (const att of params.attachments) {
-      parts.push({
-        inlineData: { mimeType: att.mimeType, data: att.data },
-      });
+      if (att.type === "text") {
+        parts.push({ text: `[File: ${att.name}]\n${att.data}` });
+      } else {
+        parts.push({
+          inlineData: { mimeType: att.mimeType, data: att.data },
+        });
+      }
     }
   }
   parts.push({ text: params.prompt });

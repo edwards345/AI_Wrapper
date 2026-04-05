@@ -19,9 +19,9 @@ export interface ProviderResult {
 }
 
 export interface Attachment {
-  type: "image" | "pdf";
+  type: "image" | "pdf" | "text";
   mimeType: string;
-  data: string; // base64
+  data: string; // base64 for image/pdf, plain text for text type
   name?: string;
 }
 

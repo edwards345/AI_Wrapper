@@ -427,37 +427,182 @@ export default function App() {
     void cancel;
   }, [prompt, systemPrompt, showSystem, selectedModels, running, saveCurrentChat]);
 
+  const TEXT_EXTENSIONS = new Set([
+    "text/plain", "text/csv", "text/markdown", "text/html", "text/xml",
+    "application/json", "application/xml",
+  ]);
+  const CODE_EXTENSIONS = /\.(js|ts|tsx|jsx|py|rb|go|rs|java|c|cpp|h|hpp|cs|swift|kt|sh|bash|zsh|yaml|yml|toml|ini|cfg|sql|r|m|php|pl|lua|zig|dart|scala|ex|exs|hs|clj|erl|elm|vue|svelte)$/i;
+  const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+  const XLSX_MIMES = new Set([
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "application/vnd.ms-excel",
+  ]);
+
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files) return;
 
     for (const file of Array.from(files)) {
-      const reader = new FileReader();
-      reader.onload = () => {
-        const base64 = (reader.result as string).split(",")[1];
-        const isImage = file.type.startsWith("image/");
-        const isPdf = file.type === "application/pdf";
-        if (!isImage && !isPdf) return;
+      const isImage = file.type.startsWith("image/");
+      const isPdf = file.type === "application/pdf";
+      const isText = TEXT_EXTENSIONS.has(file.type) || CODE_EXTENSIONS.test(file.name);
+      const isDocx = file.type === DOCX_MIME || file.name.endsWith(".docx");
+      const isXlsx = XLSX_MIMES.has(file.type) || file.name.endsWith(".xlsx") || file.name.endsWith(".xls");
 
-        setAttachments((prev) => [
-          ...prev,
-          {
+      if (isImage || isPdf) {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const base64 = (reader.result as string).split(",")[1];
+          setAttachments((prev) => [...prev, {
             type: isImage ? "image" : "pdf",
             mimeType: file.type,
             data: base64,
             name: file.name,
-          },
-        ]);
-      };
-      reader.readAsDataURL(file);
+          }]);
+        };
+        reader.readAsDataURL(file);
+      } else if (isText) {
+        const reader = new FileReader();
+        reader.onload = () => {
+          setAttachments((prev) => [...prev, {
+            type: "text",
+            mimeType: file.type || "text/plain",
+            data: reader.result as string,
+            name: file.name,
+          }]);
+        };
+        reader.readAsText(file);
+      } else if (isDocx || isXlsx) {
+        const reader = new FileReader();
+        reader.onload = async () => {
+          const base64 = (reader.result as string).split(",")[1];
+          try {
+            const res = await fetch("/api/parse-file", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ data: base64, mimeType: file.type, name: file.name }),
+            });
+            const result = await res.json();
+            if (res.ok) {
+              setAttachments((prev) => [...prev, {
+                type: "text",
+                mimeType: file.type,
+                data: result.text,
+                name: file.name,
+              }]);
+            }
+          } catch { /* ignore parse errors */ }
+        };
+        reader.readAsDataURL(file);
+      }
     }
 
-    // Reset input so the same file can be re-selected
     e.target.value = "";
   };
 
   const removeAttachment = (index: number) => {
     setAttachments((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  // Clipboard paste — images
+  const handlePaste = useCallback((e: React.ClipboardEvent) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+
+    for (const item of Array.from(items)) {
+      if (item.type.startsWith("image/")) {
+        e.preventDefault();
+        const file = item.getAsFile();
+        if (!file) continue;
+        const reader = new FileReader();
+        reader.onload = () => {
+          const base64 = (reader.result as string).split(",")[1];
+          setAttachments((prev) => [...prev, {
+            type: "image",
+            mimeType: file.type,
+            data: base64,
+            name: "pasted-image.png",
+          }]);
+        };
+        reader.readAsDataURL(file);
+      }
+    }
+  }, []);
+
+  // Voice input
+  const [listening, setListening] = useState(false);
+  const recognitionRef = useRef<ReturnType<typeof Object> | null>(null);
+
+  const toggleVoice = useCallback(() => {
+    const SpeechRecognition = (window as unknown as Record<string, unknown>).SpeechRecognition
+      || (window as unknown as Record<string, unknown>).webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      alert("Speech recognition is not supported in this browser.");
+      return;
+    }
+
+    if (listening && recognitionRef.current) {
+      (recognitionRef.current as { stop: () => void }).stop();
+      setListening(false);
+      return;
+    }
+
+    const recognition = new (SpeechRecognition as new () => {
+      continuous: boolean;
+      interimResults: boolean;
+      lang: string;
+      onresult: ((e: { results: { transcript: string; isFinal: boolean }[][] }) => void) | null;
+      onend: (() => void) | null;
+      onerror: (() => void) | null;
+      start: () => void;
+      stop: () => void;
+    })();
+    recognition.continuous = true;
+    recognition.interimResults = false;
+    recognition.lang = "en-US";
+
+    recognition.onresult = (e) => {
+      let transcript = "";
+      for (let i = 0; i < e.results.length; i++) {
+        transcript += e.results[i][0].transcript;
+      }
+      setPrompt((prev) => prev + (prev ? " " : "") + transcript);
+    };
+    recognition.onend = () => setListening(false);
+    recognition.onerror = () => setListening(false);
+
+    recognitionRef.current = recognition;
+    recognition.start();
+    setListening(true);
+  }, [listening]);
+
+  // URL input
+  const [showUrlInput, setShowUrlInput] = useState(false);
+  const [urlValue, setUrlValue] = useState("");
+  const [urlLoading, setUrlLoading] = useState(false);
+
+  const handleUrlFetch = async () => {
+    if (!urlValue.trim()) return;
+    setUrlLoading(true);
+    try {
+      const res = await fetch("/api/fetch-url", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: urlValue.trim() }),
+      });
+      const result = await res.json();
+      if (res.ok) {
+        setAttachments((prev) => [...prev, {
+          type: "text",
+          mimeType: "text/html",
+          data: result.text,
+          name: urlValue.trim(),
+        }]);
+        setUrlValue("");
+        setShowUrlInput(false);
+      }
+    } catch { /* ignore */ }
+    setUrlLoading(false);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -829,42 +974,87 @@ export default function App() {
             />
           )}
 
+          {/* URL input bar */}
+          {showUrlInput && (
+            <div className="flex gap-2 mb-2">
+              <input
+                type="url"
+                placeholder="https://example.com/article"
+                value={urlValue}
+                onChange={(e) => setUrlValue(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") handleUrlFetch(); }}
+                className="flex-1 bg-gray-800/50 text-gray-300 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-gray-600 border border-gray-700/50 min-w-0"
+                autoFocus
+              />
+              <button onClick={handleUrlFetch} disabled={urlLoading || !urlValue.trim()} className="bg-white/10 hover:bg-white/15 disabled:opacity-30 text-white text-xs px-3 py-2 rounded-lg transition-colors">
+                {urlLoading ? "..." : "Fetch"}
+              </button>
+              <button onClick={() => { setShowUrlInput(false); setUrlValue(""); }} className="text-gray-500 hover:text-gray-300 text-xs px-2">Cancel</button>
+            </div>
+          )}
+
           {/* Attachment previews */}
           {attachments.length > 0 && (
             <div className="flex flex-wrap gap-2 mb-2">
               {attachments.map((att, i) => (
-                <div key={i} className="flex items-center gap-1.5 bg-gray-800/70 rounded-lg px-2.5 py-1.5 text-xs text-gray-300 border border-gray-700/50">
+                <div key={i} className="flex items-center gap-1.5 bg-gray-800/70 rounded-lg px-2.5 py-1.5 text-xs text-gray-300 border border-gray-700/50 max-w-[200px]">
                   {att.type === "image" ? (
-                    <img src={`data:${att.mimeType};base64,${att.data}`} className="w-8 h-8 rounded object-cover" />
+                    <img src={`data:${att.mimeType};base64,${att.data}`} className="w-8 h-8 rounded object-cover shrink-0" />
+                  ) : att.type === "text" ? (
+                    <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 text-blue-400 shrink-0" viewBox="0 0 20 20" fill="currentColor">
+                      <path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z" clipRule="evenodd" />
+                    </svg>
                   ) : (
-                    <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 text-red-400" viewBox="0 0 20 20" fill="currentColor">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 text-red-400 shrink-0" viewBox="0 0 20 20" fill="currentColor">
                       <path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z" clipRule="evenodd" />
                     </svg>
                   )}
-                  <span className="truncate max-w-[120px]">{att.name}</span>
-                  <button onClick={() => removeAttachment(i)} className="text-gray-500 hover:text-red-400 ml-1">×</button>
+                  <span className="truncate">{att.name}</span>
+                  <button onClick={() => removeAttachment(i)} className="text-gray-500 hover:text-red-400 ml-auto shrink-0">×</button>
                 </div>
               ))}
             </div>
           )}
 
-          <div className="flex gap-2 md:gap-3">
+          <div className="flex gap-1.5 md:gap-2">
             {/* File attach button */}
             <input
               ref={fileInputRef}
               type="file"
-              accept="image/jpeg,image/png,image/gif,image/webp,application/pdf"
+              accept="image/*,application/pdf,.txt,.csv,.json,.xml,.md,.py,.js,.ts,.tsx,.jsx,.go,.rs,.java,.c,.cpp,.h,.cs,.swift,.kt,.sh,.yaml,.yml,.toml,.sql,.php,.rb,.lua,.docx,.xlsx,.xls"
               multiple
               onChange={handleFileSelect}
               className="hidden"
             />
             <button
               onClick={() => fileInputRef.current?.click()}
-              className="self-end text-gray-400 hover:text-white p-2.5 transition-colors shrink-0"
-              title="Attach image or PDF"
+              className="self-end text-gray-400 hover:text-white p-2 transition-colors shrink-0"
+              title="Attach file"
             >
               <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+              </svg>
+            </button>
+
+            {/* Voice input button */}
+            <button
+              onClick={toggleVoice}
+              className={`self-end p-2 transition-colors shrink-0 ${listening ? "text-red-400 animate-pulse" : "text-gray-400 hover:text-white"}`}
+              title={listening ? "Stop recording" : "Voice input"}
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+              </svg>
+            </button>
+
+            {/* URL fetch button */}
+            <button
+              onClick={() => setShowUrlInput(!showUrlInput)}
+              className={`self-end p-2 transition-colors shrink-0 ${showUrlInput ? "text-white" : "text-gray-400 hover:text-white"}`}
+              title="Fetch URL content"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
               </svg>
             </button>
 
@@ -873,6 +1063,7 @@ export default function App() {
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
               onKeyDown={handleKeyDown}
+              onPaste={handlePaste}
               rows={2}
               className="flex-1 bg-gray-800/50 text-gray-100 rounded-xl px-3 md:px-4 py-2.5 resize-none focus:outline-none focus:ring-1 focus:ring-gray-600 border border-gray-700/50 text-sm min-w-0"
             />

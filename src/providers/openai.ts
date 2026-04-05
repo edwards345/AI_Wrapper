@@ -25,6 +25,8 @@ export function createOpenAIClient(apiKey: string): ProviderClient {
             type: "image_url",
             image_url: { url: `data:${att.mimeType};base64,${att.data}` },
           });
+        } else if (att.type === "text") {
+          content.push({ type: "text", text: `[File: ${att.name}]\n${att.data}` });
         }
         // OpenAI doesn't support PDF natively — skip
       }

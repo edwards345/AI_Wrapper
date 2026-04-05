@@ -176,6 +176,91 @@ app.post("/api/summary", async (req, res) => {
   }
 });
 
+// POST /api/parse-file — extract text from docx/xlsx
+app.post("/api/parse-file", async (req, res) => {
+  const { data, mimeType, name } = req.body;
+
+  if (!data || !mimeType) {
+    res.status(400).json({ error: "data and mimeType are required" });
+    return;
+  }
+
+  try {
+    const buffer = Buffer.from(data, "base64");
+    let text = "";
+
+    if (mimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document") {
+      const mammoth = await import("mammoth");
+      const result = await mammoth.default.extractRawText({ buffer });
+      text = result.value;
+    } else if (
+      mimeType === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ||
+      mimeType === "application/vnd.ms-excel"
+    ) {
+      const XLSX = await import("xlsx");
+      const workbook = XLSX.read(buffer, { type: "buffer" });
+      const sheets: string[] = [];
+      for (const sheetName of workbook.SheetNames) {
+        const csv = XLSX.utils.sheet_to_csv(workbook.Sheets[sheetName]);
+        sheets.push(`[Sheet: ${sheetName}]\n${csv}`);
+      }
+      text = sheets.join("\n\n");
+    } else {
+      res.status(400).json({ error: `Unsupported file type: ${mimeType}` });
+      return;
+    }
+
+    res.json({ text, name });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+  }
+});
+
+// POST /api/fetch-url — fetch a web page and extract text
+app.post("/api/fetch-url", async (req, res) => {
+  const { url } = req.body;
+
+  if (!url || typeof url !== "string") {
+    res.status(400).json({ error: "url is required" });
+    return;
+  }
+
+  try {
+    const response = await fetch(url, {
+      headers: { "User-Agent": "AI-Wrapper/1.0" },
+      signal: AbortSignal.timeout(15_000),
+    });
+
+    if (!response.ok) {
+      res.status(400).json({ error: `Failed to fetch URL: ${response.status} ${response.statusText}` });
+      return;
+    }
+
+    const html = await response.text();
+
+    // Strip HTML tags, scripts, styles to get plain text
+    const text = html
+      .replace(/<script[\s\S]*?<\/script>/gi, "")
+      .replace(/<style[\s\S]*?<\/style>/gi, "")
+      .replace(/<[^>]+>/g, " ")
+      .replace(/&nbsp;/g, " ")
+      .replace(/&amp;/g, "&")
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .replace(/&quot;/g, '"')
+      .replace(/&#039;/g, "'")
+      .replace(/\s+/g, " ")
+      .trim();
+
+    // Truncate to ~50k chars to avoid overwhelming the models
+    const truncated = text.length > 50_000 ? text.slice(0, 50_000) + "\n\n[Content truncated...]" : text;
+
+    res.json({ text: truncated, url });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+  }
+});
+
 // SPA fallback
 app.get("/{*path}", (_req, res) => {
   res.sendFile(join(__dirname, "client", "dist", "index.html"));
