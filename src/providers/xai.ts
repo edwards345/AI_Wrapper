@@ -74,14 +74,30 @@ export function createXAIClient(apiKey: string): ProviderClient {
         });
 
         let content = "";
+        const IDLE_TIMEOUT_MS = 15_000;
 
-        for await (const chunk of stream) {
-          const delta = chunk.choices[0]?.delta?.content;
-          if (delta) {
-            content += delta;
-            onToken(delta);
+        // xAI may not send [DONE], so use an idle timeout to detect end-of-stream
+        await new Promise<void>((resolve, reject) => {
+          let idleTimer = setTimeout(resolve, IDLE_TIMEOUT_MS);
+
+          const iter = stream[Symbol.asyncIterator]();
+
+          function pull() {
+            iter.next().then(({ done, value }) => {
+              if (done) { clearTimeout(idleTimer); resolve(); return; }
+              clearTimeout(idleTimer);
+              const delta = value.choices[0]?.delta?.content;
+              if (delta) {
+                content += delta;
+                onToken(delta);
+              }
+              idleTimer = setTimeout(resolve, IDLE_TIMEOUT_MS);
+              pull();
+            }).catch((err) => { clearTimeout(idleTimer); reject(err); });
           }
-        }
+
+          pull();
+        });
 
         const latencyMs = Math.round(performance.now() - start);
 
