@@ -718,6 +718,32 @@ export default function App() {
                   );
                 })}
               </div>
+              <div className="flex gap-1.5 mt-1.5">
+                {(["max", "heavy"] as const).map((preset) => {
+                  const presetModels = (Object.keys(modelsData.models) as ProviderName[]).flatMap((p) => {
+                    if (!modelsData.availableProviders.includes(p)) return [];
+                    if (preset === "max") {
+                      return modelsData.models[p].filter((m) => m.tier === "max").map((m) => m.id);
+                    }
+                    // heavy = flagship from all + max from all (includes Grok 4 Heavy)
+                    return modelsData.models[p].filter((m) => m.tier === "flagship" || m.tier === "max").map((m) => m.id);
+                  });
+                  const allSelected = presetModels.length > 0 && presetModels.every((id) => selectedModels.includes(id));
+                  return (
+                    <button
+                      key={preset}
+                      onClick={() => setSelectedModels(allSelected ? [] : presetModels)}
+                      className={`flex-1 text-xs px-2 py-1.5 rounded-lg transition-colors font-medium capitalize ${
+                        allSelected
+                          ? "bg-white/20 text-white"
+                          : "bg-white/5 text-gray-400 hover:bg-white/10 hover:text-gray-200"
+                      }`}
+                    >
+                      {preset}
+                    </button>
+                  );
+                })}
+              </div>
 
               {(Object.keys(modelsData.models) as ProviderName[]).map((provider) => {
                 const available = modelsData.availableProviders.includes(provider);
