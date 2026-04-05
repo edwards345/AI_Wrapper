@@ -73,14 +73,22 @@ export function createAnthropicClient(apiKey: string): ProviderClient {
         });
 
         let content = "";
+        let inputTokens: number | undefined;
+        let outputTokens: number | undefined;
+
         for await (const event of stream) {
           if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
             content += event.delta.text;
             onToken(event.delta.text);
           }
+          if (event.type === "message_delta" && event.usage) {
+            outputTokens = event.usage.output_tokens;
+          }
+          if (event.type === "message_start" && event.message?.usage) {
+            inputTokens = event.message.usage.input_tokens;
+          }
         }
 
-        const finalMessage = await stream.finalMessage();
         const latencyMs = Math.round(performance.now() - start);
 
         return {
@@ -90,8 +98,8 @@ export function createAnthropicClient(apiKey: string): ProviderClient {
           status: "success",
           content,
           latencyMs,
-          inputTokens: finalMessage.usage.input_tokens,
-          outputTokens: finalMessage.usage.output_tokens,
+          inputTokens,
+          outputTokens,
         };
       } catch (err) {
         const latencyMs = Math.round(performance.now() - start);

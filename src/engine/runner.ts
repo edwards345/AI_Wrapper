@@ -107,21 +107,22 @@ export async function runAll(
     };
 
     let result: ProviderResult;
+    let timedOut = false;
 
     const streamFn = sel.client.chatStream;
     if (streamFn) {
       try {
-        result = await withTimeout(
-          streamFn.call(sel.client, chatParams, (token: string) => {
-            if (!started.has(sel.label)) {
-              started.add(sel.label);
-              params.onStreamStart?.(sel.label, sel.client.name);
-            }
-            params.onStreamToken?.(sel.label, token);
-          }),
-          timeoutMs,
-          sel
-        );
+        const streamPromise = streamFn.call(sel.client, chatParams, (token: string) => {
+          if (timedOut) return; // ignore tokens after timeout
+          if (!started.has(sel.label)) {
+            started.add(sel.label);
+            params.onStreamStart?.(sel.label, sel.client.name);
+          }
+          params.onStreamToken?.(sel.label, token);
+        });
+
+        result = await withTimeout(streamPromise, timeoutMs, sel);
+        if (result.status === "timeout") timedOut = true;
       } catch (err) {
         result = {
           provider: sel.client.name,
