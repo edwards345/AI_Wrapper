@@ -395,23 +395,30 @@ export default function App() {
       onDone: async (results) => {
         setRunning(false);
 
+        // Mark all streams as done in case onStreamEnd didn't fire
+        setProviderTurns((prev) => {
+          const next = { ...prev };
+          for (const label of Object.keys(next)) {
+            next[label] = next[label].map((t) =>
+              t.streaming ? { ...t, streaming: false } : t
+            );
+          }
+          return next;
+        });
+
         // Save in case onStreamEnd didn't fire
         if (conversationRef.current.length > 0) {
           saveCurrentChat();
         }
 
-        // Auto-generate summary and consensus if multiple providers responded
+        // Auto-generate summary if multiple providers responded
         const successes = results.filter((r) => r.status === "success");
         if (successes.length >= 2) {
           setSummaryLoading(true);
           try {
-            const [summaryContent, consensusContent] = await Promise.all([
-              fetchSummary(userPrompt, results, "combined"),
-              fetchSummary(userPrompt, results, "consensus"),
-            ]);
+            const summaryContent = await fetchSummary(userPrompt, results, "combined");
             setSummary({ type: "combined", content: summaryContent });
-            setConsensus({ type: "consensus", content: consensusContent });
-            setExpandedCards((prev) => new Set([...prev, "__summary", "__consensus"]));
+            setExpandedCards((prev) => new Set([...prev, "__summary"]));
           } catch (err) {
             console.error(err);
           }
@@ -451,18 +458,31 @@ export default function App() {
     if (successes.length >= 2) {
       setSummaryLoading(true);
       try {
-        const [summaryContent, consensusContent] = await Promise.all([
-          fetchSummary(lastPrompt.current, results, "combined"),
-          fetchSummary(lastPrompt.current, results, "consensus"),
-        ]);
+        const summaryContent = await fetchSummary(lastPrompt.current, results, "combined");
         setSummary({ type: "combined", content: summaryContent });
-        setConsensus({ type: "consensus", content: consensusContent });
-        setExpandedCards((prev) => new Set([...prev, "__summary", "__consensus"]));
+        setExpandedCards((prev) => new Set([...prev, "__summary"]));
       } catch (err) {
         console.error(err);
       }
       setSummaryLoading(false);
     }
+  }, []);
+
+  // Manual consensus comparison
+  const handleConsensus = useCallback(async () => {
+    const results = allResults.current;
+    const successes = results.filter((r) => r.status === "success");
+    if (successes.length < 2) return;
+
+    setSummaryLoading(true);
+    try {
+      const consensusContent = await fetchSummary(lastPrompt.current, results, "consensus");
+      setConsensus({ type: "consensus", content: consensusContent });
+      setExpandedCards((prev) => new Set([...prev, "__consensus"]));
+    } catch (err) {
+      console.error(err);
+    }
+    setSummaryLoading(false);
   }, []);
 
   const TEXT_EXTENSIONS = new Set([
@@ -864,9 +884,21 @@ export default function App() {
                   onClick={handleSummarizeNow}
                   className="bg-white/10 hover:bg-white/15 text-white text-xs px-3 py-1.5 rounded-lg transition-colors whitespace-nowrap"
                 >
-                  Summarize &amp; Compare
+                  Summarize Now
                 </button>
               )}
+            </div>
+          )}
+
+          {/* Compare button — available after models finish, if no consensus yet */}
+          {!running && !anyStreaming && !consensus && !summaryLoading && activeProviders.length >= 2 && allResults.current.length >= 2 && (
+            <div className="flex items-center gap-3 mb-4 px-2">
+              <button
+                onClick={handleConsensus}
+                className="bg-white/10 hover:bg-white/15 text-white text-xs px-3 py-1.5 rounded-lg transition-colors"
+              >
+                Compare &amp; Find Consensus
+              </button>
             </div>
           )}
 
