@@ -589,6 +589,19 @@ export default function App() {
             </div>
           )}
 
+          {/* Waiting for first response */}
+          {running && activeProviders.length === 0 && (
+            <div className="flex items-center justify-center h-full">
+              <div className="flex flex-col items-center gap-4">
+                <div className="relative w-12 h-12">
+                  <div className="absolute inset-0 rounded-full border-2 border-gray-700" />
+                  <div className="absolute inset-0 rounded-full border-2 border-t-[#d4a27a] border-r-[#10a37f] border-b-[#8ab4f8] border-l-[#f97316] animate-spin" />
+                </div>
+                <p className="text-gray-400 text-sm animate-pulse">Waiting for responses...</p>
+              </div>
+            </div>
+          )}
+
           {/* Loading indicator while generating summaries */}
           {summaryLoading && (
             <div className="flex items-center gap-3 mb-5 px-2">
