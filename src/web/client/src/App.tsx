@@ -191,6 +191,9 @@ export default function App() {
   const [currentChatId, setCurrentChatId] = useState<string | null>(null);
   const [showHistory, setShowHistory] = useState(false);
 
+  // Mobile sidebar
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+
   useEffect(() => {
     fetchModels().then((data) => {
       setModelsData(data);
@@ -429,21 +432,41 @@ export default function App() {
 
   return (
     <div className="flex h-screen bg-gray-950">
+      {/* Mobile backdrop */}
+      {sidebarOpen && (
+        <div
+          className="fixed inset-0 bg-black/60 z-30 md:hidden"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+
       {/* Sidebar */}
-      <aside className="w-72 bg-[#111113] border-r border-gray-800/50 flex flex-col shrink-0">
+      <aside className={`fixed inset-y-0 left-0 z-40 w-72 bg-[#111113] border-r border-gray-800/50 flex flex-col transform transition-transform duration-200 ease-in-out md:relative md:translate-x-0 ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}`}>
         <div className="p-5 border-b border-gray-800/50">
-          <h1 className="text-lg font-bold text-white tracking-tight">AI Wrapper</h1>
-          <p className="text-xs text-gray-500 mt-1">Multi-LLM Prompt Runner</p>
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-lg font-bold text-white tracking-tight">AI Wrapper</h1>
+              <p className="text-xs text-gray-500 mt-1">Multi-LLM Prompt Runner</p>
+            </div>
+            <button
+              onClick={() => setSidebarOpen(false)}
+              className="md:hidden text-gray-400 hover:text-white p-1"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+              </svg>
+            </button>
+          </div>
           <div className="flex gap-2 mt-3">
             <button
-              onClick={startNewChat}
-              className="flex-1 bg-white/10 hover:bg-white/15 text-white text-xs px-3 py-1.5 rounded-lg transition-colors"
+              onClick={() => { startNewChat(); setSidebarOpen(false); }}
+              className="flex-1 bg-white/10 hover:bg-white/15 text-white text-xs px-3 py-2 rounded-lg transition-colors"
             >
               New Chat
             </button>
             <button
               onClick={() => setShowHistory(!showHistory)}
-              className="flex-1 bg-white/10 hover:bg-white/15 text-white text-xs px-3 py-1.5 rounded-lg transition-colors"
+              className="flex-1 bg-white/10 hover:bg-white/15 text-white text-xs px-3 py-2 rounded-lg transition-colors"
             >
               {showHistory ? "Models" : "History"}
             </button>
@@ -464,7 +487,7 @@ export default function App() {
                     currentChatId === chat.id ? "bg-white/10 text-white" : "text-gray-400 hover:bg-white/5"
                   }`}
                 >
-                  <div className="flex-1 truncate mr-2" onClick={() => loadChat(chat)}>
+                  <div className="flex-1 truncate mr-2" onClick={() => { loadChat(chat); setSidebarOpen(false); }}>
                     <p className="truncate">{chat.title}</p>
                     <p className="text-[10px] text-gray-600">{new Date(chat.timestamp).toLocaleDateString()}</p>
                   </div>
@@ -516,9 +539,22 @@ export default function App() {
       </aside>
 
       {/* Main area */}
-      <main className="flex-1 flex flex-col overflow-hidden">
+      <main className="flex-1 flex flex-col overflow-hidden min-w-0">
+        {/* Mobile header */}
+        <div className="md:hidden flex items-center gap-3 px-4 py-3 border-b border-gray-800/50 bg-[#0c0c0e]">
+          <button
+            onClick={() => setSidebarOpen(true)}
+            className="text-gray-400 hover:text-white p-1"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+            </svg>
+          </button>
+          <h1 className="text-sm font-bold text-white">AI Wrapper</h1>
+        </div>
+
         {/* Results */}
-        <div className="flex-1 overflow-y-auto p-5">
+        <div className="flex-1 overflow-y-auto p-3 md:p-5">
           {activeProviders.length === 0 && !running && !summary && (
             <div className="flex items-center justify-center h-full">
               <div className="text-center">
@@ -658,7 +694,7 @@ export default function App() {
                     {/* Expanded card */}
                     {isExpanded && (
                       <div className={`mt-1 ${theme.card}`}>
-                        <div className={`${theme.body} space-y-3 max-h-[600px] overflow-y-auto`}>
+                        <div className={`${theme.body} space-y-3 max-h-[80vh] md:max-h-[600px] overflow-y-auto`}>
                           {turns.map((turn, i) => {
                             if (turn.role === "user") {
                               return (
@@ -697,7 +733,7 @@ export default function App() {
         </div>
 
         {/* Prompt bar — pinned to bottom */}
-        <div className="border-t border-gray-800/50 p-4 bg-[#0c0c0e]">
+        <div className="border-t border-gray-800/50 p-3 md:p-4 bg-[#0c0c0e]">
           {showSystem && (
             <input
               type="text"
@@ -707,28 +743,28 @@ export default function App() {
               className="w-full bg-gray-800/50 text-gray-300 rounded-xl px-4 py-2.5 mb-2 text-sm focus:outline-none focus:ring-1 focus:ring-gray-600 border border-gray-700/50"
             />
           )}
-          <div className="flex gap-3">
+          <div className="flex gap-2 md:gap-3">
             <textarea
               placeholder={conversationRef.current.length > 0 ? "Continue the conversation..." : "Enter your prompt..."}
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
               onKeyDown={handleKeyDown}
               rows={2}
-              className="flex-1 bg-gray-800/50 text-gray-100 rounded-xl px-4 py-2.5 resize-none focus:outline-none focus:ring-1 focus:ring-gray-600 border border-gray-700/50 text-sm"
+              className="flex-1 bg-gray-800/50 text-gray-100 rounded-xl px-3 md:px-4 py-2.5 resize-none focus:outline-none focus:ring-1 focus:ring-gray-600 border border-gray-700/50 text-sm min-w-0"
             />
             <div className="flex flex-col gap-1.5">
               <button
                 onClick={handleRun}
                 disabled={running || !prompt.trim()}
-                className="bg-white hover:bg-gray-200 disabled:opacity-30 text-black px-5 py-2.5 rounded-xl text-sm font-semibold transition-colors"
+                className="bg-white hover:bg-gray-200 disabled:opacity-30 text-black px-4 md:px-5 py-2.5 rounded-xl text-sm font-semibold transition-colors"
               >
-                {running ? "Running..." : "Send"}
+                {running ? "..." : "Send"}
               </button>
               <button
                 onClick={() => setShowSystem(!showSystem)}
                 className="text-[11px] text-gray-500 hover:text-gray-300 transition-colors"
               >
-                {showSystem ? "Hide" : "System"} prompt
+                {showSystem ? "Hide" : "Sys"}
               </button>
             </div>
           </div>
