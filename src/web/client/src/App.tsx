@@ -427,6 +427,44 @@ export default function App() {
     void cancel;
   }, [prompt, systemPrompt, showSystem, selectedModels, running, saveCurrentChat]);
 
+  // Check if any provider is still streaming
+  const anyStreaming = Object.values(providerTurns).some((turns) =>
+    turns.some((t) => t.streaming)
+  );
+
+  // Manual summarize — stop waiting for stuck models and summarize what we have
+  const handleSummarizeNow = useCallback(async () => {
+    // Mark all streaming turns as done
+    setProviderTurns((prev) => {
+      const next = { ...prev };
+      for (const label of Object.keys(next)) {
+        next[label] = next[label].map((t) =>
+          t.streaming ? { ...t, streaming: false } : t
+        );
+      }
+      return next;
+    });
+    setRunning(false);
+
+    const results = allResults.current;
+    const successes = results.filter((r) => r.status === "success");
+    if (successes.length >= 2) {
+      setSummaryLoading(true);
+      try {
+        const [summaryContent, consensusContent] = await Promise.all([
+          fetchSummary(lastPrompt.current, results, "combined"),
+          fetchSummary(lastPrompt.current, results, "consensus"),
+        ]);
+        setSummary({ type: "combined", content: summaryContent });
+        setConsensus({ type: "consensus", content: consensusContent });
+        setExpandedCards((prev) => new Set([...prev, "__summary", "__consensus"]));
+      } catch (err) {
+        console.error(err);
+      }
+      setSummaryLoading(false);
+    }
+  }, []);
+
   const TEXT_EXTENSIONS = new Set([
     "text/plain", "text/csv", "text/markdown", "text/html", "text/xml",
     "application/json", "application/xml",
@@ -698,9 +736,11 @@ export default function App() {
               <div className="flex gap-1.5">
                 {(["flagship", "balanced", "fast"] as const).map((tier) => {
                   const tierModels = (Object.keys(modelsData.models) as ProviderName[]).flatMap(
-                    (p) => modelsData.availableProviders.includes(p)
-                      ? modelsData.models[p].filter((m) => m.tier === tier).map((m) => m.id)
-                      : []
+                    (p) => {
+                      if (!modelsData.availableProviders.includes(p)) return [];
+                      const first = modelsData.models[p].find((m) => m.tier === tier);
+                      return first ? [first.id] : [];
+                    }
                   );
                   const allSelected = tierModels.length > 0 && tierModels.every((id) => selectedModels.includes(id));
                   return (
@@ -811,6 +851,22 @@ export default function App() {
                 </div>
                 <p className="text-gray-400 text-sm animate-pulse">Waiting for responses...</p>
               </div>
+            </div>
+          )}
+
+          {/* Still waiting for models / summarize button */}
+          {(running || anyStreaming) && activeProviders.length > 0 && (
+            <div className="flex items-center gap-3 mb-4 px-2">
+              <div className="w-4 h-4 border-2 border-t-[#d4a27a] border-r-[#10a37f] border-b-[#8ab4f8] border-l-[#f97316] rounded-full animate-spin shrink-0" />
+              <span className="text-gray-400 text-sm">Waiting for all models...</span>
+              {allResults.current.length >= 2 && (
+                <button
+                  onClick={handleSummarizeNow}
+                  className="bg-white/10 hover:bg-white/15 text-white text-xs px-3 py-1.5 rounded-lg transition-colors whitespace-nowrap"
+                >
+                  Summarize &amp; Compare
+                </button>
+              )}
             </div>
           )}
 
