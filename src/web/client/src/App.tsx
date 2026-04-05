@@ -203,8 +203,8 @@ export default function App() {
       setModelsData(data);
       const defaults: string[] = [];
       for (const provider of data.availableProviders) {
-        const fast = data.models[provider].find((m) => m.tier === "fast");
-        if (fast) defaults.push(fast.id);
+        const balanced = data.models[provider].find((m) => m.tier === "balanced");
+        if (balanced) defaults.push(balanced.id);
         else if (data.models[provider][0]) defaults.push(data.models[provider][0].id);
       }
       setSelectedModels(defaults);
