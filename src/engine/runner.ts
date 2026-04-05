@@ -1,7 +1,7 @@
 import type { ProviderClient, ProviderResult, ChatParams, ChatMessage } from "../providers/types.js";
 import type { ProviderName } from "./models.js";
 
-const DEFAULT_TIMEOUT_MS = 60_000;
+const DEFAULT_TIMEOUT_MS = 120_000;
 
 export interface RunParams {
   prompt: string;
@@ -91,107 +91,75 @@ export async function runAll(
     return results;
   }
 
-  // Streaming: collect tokens per provider, display sequentially
-  // Each provider streams into a buffer. When done, it resolves.
-  // We use a queue to display streams one at a time in arrival order.
+  // Streaming: fire callbacks in real-time as tokens arrive from all providers in parallel
 
-  interface StreamJob {
-    selection: ModelSelection;
-    result: Promise<ProviderResult>;
-    tokens: string[];
-    firstTokenTime: number | null;
-  }
+  const allResults: ProviderResult[] = [];
+  const started = new Set<string>();
 
-  const jobs: StreamJob[] = [];
-  const finishedQueue: ProviderResult[] = [];
-  let displayResolve: (() => void) | null = null;
-
-  for (const sel of selections) {
+  const promises = selections.map(async (sel) => {
     const chatParams: ChatParams = {
       model: sel.model,
       label: sel.label,
       prompt: params.prompt,
       systemPrompt: params.systemPrompt,
+      messages: params.messages,
       maxTokens: params.maxTokens,
     };
 
-    const job: StreamJob = {
-      selection: sel,
-      tokens: [],
-      firstTokenTime: null,
-      result: null as unknown as Promise<ProviderResult>,
-    };
+    let result: ProviderResult;
 
     const streamFn = sel.client.chatStream;
     if (streamFn) {
-      job.result = withTimeout(
-        streamFn.call(sel.client, chatParams, (token: string) => {
-          if (job.firstTokenTime === null) job.firstTokenTime = performance.now();
-          job.tokens.push(token);
-        }),
-        timeoutMs,
-        sel
-      ).catch((err) => ({
-        provider: sel.client.name,
-        model: sel.model,
-        label: sel.label,
-        status: "error" as const,
-        content: "",
-        latencyMs: 0,
-        error: err instanceof Error ? err.message : String(err),
-      }));
+      try {
+        result = await withTimeout(
+          streamFn.call(sel.client, chatParams, (token: string) => {
+            if (!started.has(sel.label)) {
+              started.add(sel.label);
+              params.onStreamStart?.(sel.label, sel.client.name);
+            }
+            params.onStreamToken?.(sel.label, token);
+          }),
+          timeoutMs,
+          sel
+        );
+      } catch (err) {
+        result = {
+          provider: sel.client.name,
+          model: sel.model,
+          label: sel.label,
+          status: "error" as const,
+          content: "",
+          latencyMs: 0,
+          error: err instanceof Error ? err.message : String(err),
+        };
+      }
     } else {
       // Fallback to non-streaming
-      job.result = withTimeout(sel.client.chat(chatParams), timeoutMs, sel).catch((err) => ({
-        provider: sel.client.name,
-        model: sel.model,
-        label: sel.label,
-        status: "error" as const,
-        content: "",
-        latencyMs: 0,
-        error: err instanceof Error ? err.message : String(err),
-      }));
-    }
-
-    // When this provider finishes, push to queue and signal
-    job.result.then((result) => {
-      finishedQueue.push(result);
-      if (displayResolve) displayResolve();
-    });
-
-    jobs.push(job);
-  }
-
-  // Display results one at a time as they finish
-  const allResults: ProviderResult[] = [];
-  let displayed = 0;
-
-  while (displayed < selections.length) {
-    // Wait for next result if queue is empty
-    if (finishedQueue.length === displayed) {
-      await new Promise<void>((resolve) => { displayResolve = resolve; });
-    }
-
-    const result = finishedQueue[displayed];
-    displayed++;
-
-    // Find the job to get its tokens
-    const job = jobs.find((j) => j.selection.label === result.label);
-
-    if (result.status === "success" && job && job.tokens.length > 0) {
-      // Notify stream start, replay tokens, then end
-      params.onStreamStart?.(result.label, result.provider);
-      for (const token of job.tokens) {
-        params.onStreamToken?.(result.label, token);
+      try {
+        result = await withTimeout(sel.client.chat(chatParams), timeoutMs, sel);
+      } catch (err) {
+        result = {
+          provider: sel.client.name,
+          model: sel.model,
+          label: sel.label,
+          status: "error" as const,
+          content: "",
+          latencyMs: 0,
+          error: err instanceof Error ? err.message : String(err),
+        };
       }
+    }
+
+    if (started.has(sel.label)) {
       params.onStreamEnd?.(result);
     } else {
-      // Non-streaming fallback or error
       params.onResult?.(result);
     }
 
     allResults.push(result);
-  }
+    return result;
+  });
 
+  await Promise.allSettled(promises);
   return allResults;
 }

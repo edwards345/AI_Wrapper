@@ -33,6 +33,7 @@ export const MODELS: Record<ProviderName, ModelDef[]> = {
   ],
   grok: [
     { id: "grok-4",             label: "Grok 4",                tier: "flagship" },
+    { id: "grok-4-heavy",       label: "Grok 4 Heavy",          tier: "max"      },
     { id: "grok-4-fast",        label: "Grok 4 Fast",           tier: "balanced" },
     { id: "grok-3",             label: "Grok 3",                tier: "stable"   },
     { id: "grok-3-mini",        label: "Grok 3 Mini",           tier: "fast"     },
