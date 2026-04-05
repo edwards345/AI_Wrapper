@@ -343,6 +343,15 @@ export default function App() {
           }
           return { ...prev, [result.label]: updated };
         });
+
+        // Update conversation history with first successful response
+        if (result.status === "success" && conversationRef.current[conversationRef.current.length - 1]?.role !== "assistant") {
+          if (!conversationRef.current.some((m) => m.role === "user" && m.content === userPrompt)) {
+            conversationRef.current.push({ role: "user", content: userPrompt });
+          }
+          conversationRef.current.push({ role: "assistant", content: result.content });
+          saveCurrentChat();
+        }
       },
       onResult: (result) => {
         allResults.current.push(result);
@@ -366,25 +375,23 @@ export default function App() {
           ];
           return next;
         });
+
+        // Save conversation for non-streaming results too
+        if (result.status === "success" && conversationRef.current[conversationRef.current.length - 1]?.role !== "assistant") {
+          if (!conversationRef.current.some((m) => m.role === "user" && m.content === userPrompt)) {
+            conversationRef.current.push({ role: "user", content: userPrompt });
+          }
+          conversationRef.current.push({ role: "assistant", content: result.content });
+          saveCurrentChat();
+        }
       },
       onDone: async (results) => {
         setRunning(false);
 
-        // Update conversation history with user prompt and first successful response
-        conversationRef.current = [
-          ...conversationRef.current,
-          { role: "user", content: userPrompt },
-        ];
-        const firstSuccess = results.find((r) => r.status === "success");
-        if (firstSuccess) {
-          conversationRef.current = [
-            ...conversationRef.current,
-            { role: "assistant", content: firstSuccess.content },
-          ];
+        // Save in case onStreamEnd didn't fire
+        if (conversationRef.current.length > 0) {
+          saveCurrentChat();
         }
-
-        // Auto-save
-        setTimeout(() => saveCurrentChat(), 100);
 
         // Auto-generate summary and consensus if multiple providers responded
         const successes = results.filter((r) => r.status === "success");
