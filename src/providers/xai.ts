@@ -18,7 +18,24 @@ export function createXAIClient(apiKey: string): ProviderClient {
         messages.push({ role: m.role, content: m.content });
       }
     }
-    messages.push({ role: "user", content: params.prompt });
+
+    // Build user message with optional image attachments
+    if (params.attachments?.some((a) => a.type === "image")) {
+      const content: OpenAI.Chat.Completions.ChatCompletionContentPart[] = [];
+      for (const att of params.attachments!) {
+        if (att.type === "image") {
+          content.push({
+            type: "image_url",
+            image_url: { url: `data:${att.mimeType};base64,${att.data}` },
+          });
+        }
+      }
+      content.push({ type: "text", text: params.prompt });
+      messages.push({ role: "user", content });
+    } else {
+      messages.push({ role: "user", content: params.prompt });
+    }
+
     return messages;
   }
 

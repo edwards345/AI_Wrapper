@@ -23,6 +23,13 @@ export interface ChatMessage {
   content: string;
 }
 
+export interface Attachment {
+  type: "image" | "pdf";
+  mimeType: string;
+  data: string; // base64
+  name?: string;
+}
+
 export interface ChatParams {
   model: string;
   label: string;
@@ -30,4 +37,5 @@ export interface ChatParams {
   systemPrompt?: string;
   maxTokens?: number;
   messages?: ChatMessage[];
+  attachments?: Attachment[];
 }

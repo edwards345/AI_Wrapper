@@ -15,7 +15,25 @@ export function createOpenAIClient(apiKey: string): ProviderClient {
         messages.push({ role: m.role, content: m.content });
       }
     }
-    messages.push({ role: "user", content: params.prompt });
+
+    // Build user message with optional attachments
+    if (params.attachments?.length) {
+      const content: OpenAI.Chat.Completions.ChatCompletionContentPart[] = [];
+      for (const att of params.attachments) {
+        if (att.type === "image") {
+          content.push({
+            type: "image_url",
+            image_url: { url: `data:${att.mimeType};base64,${att.data}` },
+          });
+        }
+        // OpenAI doesn't support PDF natively — skip
+      }
+      content.push({ type: "text", text: params.prompt });
+      messages.push({ role: "user", content });
+    } else {
+      messages.push({ role: "user", content: params.prompt });
+    }
+
     return messages;
   }
 

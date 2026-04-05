@@ -3,15 +3,37 @@ import type { ProviderClient, ChatParams, ProviderResult } from "./types.js";
 import { friendlyError } from "./errors.js";
 
 function buildMessages(params: ChatParams): Anthropic.MessageParam[] {
+  const msgs: Anthropic.MessageParam[] = [];
+
   if (params.messages?.length) {
-    const msgs: Anthropic.MessageParam[] = params.messages.map((m) => ({
-      role: m.role,
-      content: m.content,
-    }));
-    msgs.push({ role: "user", content: params.prompt });
-    return msgs;
+    for (const m of params.messages) {
+      msgs.push({ role: m.role, content: m.content });
+    }
   }
-  return [{ role: "user", content: params.prompt }];
+
+  // Build the current user message with optional attachments
+  const content: Anthropic.ContentBlockParam[] = [];
+
+  if (params.attachments?.length) {
+    for (const att of params.attachments) {
+      if (att.type === "image") {
+        content.push({
+          type: "image",
+          source: { type: "base64", media_type: att.mimeType as "image/jpeg" | "image/png" | "image/gif" | "image/webp", data: att.data },
+        });
+      } else if (att.type === "pdf") {
+        content.push({
+          type: "document",
+          source: { type: "base64", media_type: "application/pdf", data: att.data },
+        });
+      }
+    }
+  }
+
+  content.push({ type: "text", text: params.prompt });
+  msgs.push({ role: "user", content });
+
+  return msgs;
 }
 
 export function createAnthropicClient(apiKey: string): ProviderClient {

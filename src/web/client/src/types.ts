@@ -18,6 +18,13 @@ export interface ProviderResult {
   error?: string;
 }
 
+export interface Attachment {
+  type: "image" | "pdf";
+  mimeType: string;
+  data: string; // base64
+  name?: string;
+}
+
 export interface ChatMessage {
   role: "user" | "assistant";
   content: string;

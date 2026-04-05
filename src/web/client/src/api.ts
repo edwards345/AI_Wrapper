@@ -1,4 +1,4 @@
-import type { ModelsResponse, ProviderResult, ChatMessage } from "./types";
+import type { ModelsResponse, ProviderResult, ChatMessage, Attachment } from "./types";
 
 export async function fetchModels(): Promise<ModelsResponse> {
   const res = await fetch("/api/models");
@@ -9,6 +9,7 @@ export interface RunOptions {
   prompt: string;
   systemPrompt?: string;
   messages?: ChatMessage[];
+  attachments?: Attachment[];
   models?: string[];
   providers?: string[];
   preset?: string;
@@ -29,6 +30,7 @@ export function runPrompt(options: RunOptions): () => void {
   };
   if (options.systemPrompt) body.systemPrompt = options.systemPrompt;
   if (options.messages?.length) body.messages = options.messages;
+  if (options.attachments?.length) body.attachments = options.attachments;
   if (options.models?.length) body.models = options.models;
   if (options.providers?.length) body.providers = options.providers;
   if (options.preset) body.preset = options.preset;

@@ -12,7 +12,19 @@ function buildContents(params: ChatParams): Content[] {
       });
     }
   }
-  contents.push({ role: "user", parts: [{ text: params.prompt }] });
+
+  // Build user message with optional attachments
+  const parts: Content["parts"] = [];
+  if (params.attachments?.length) {
+    for (const att of params.attachments) {
+      parts.push({
+        inlineData: { mimeType: att.mimeType, data: att.data },
+      });
+    }
+  }
+  parts.push({ text: params.prompt });
+  contents.push({ role: "user", parts });
+
   return contents;
 }
 

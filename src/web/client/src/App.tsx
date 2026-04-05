@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { fetchModels, runPrompt, fetchSummary } from "./api";
-import type { ModelsResponse, ProviderName, ProviderResult, ChatMessage, SavedChat } from "./types";
+import type { ModelsResponse, ProviderName, ProviderResult, ChatMessage, SavedChat, Attachment } from "./types";
 
 /* ───────── Provider Themes ───────── */
 
@@ -194,6 +194,10 @@ export default function App() {
   // Mobile sidebar
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
+  // File attachments
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   useEffect(() => {
     fetchModels().then((data) => {
       setModelsData(data);
@@ -297,7 +301,9 @@ export default function App() {
     lastPrompt.current = prompt;
 
     const userPrompt = prompt;
+    const currentAttachments = attachments.length > 0 ? [...attachments] : undefined;
     setPrompt("");
+    setAttachments([]);
 
     // User turns are added per-provider when streaming/results arrive (keyed by label)
 
@@ -305,6 +311,7 @@ export default function App() {
       prompt: userPrompt,
       systemPrompt: showSystem ? systemPrompt : undefined,
       messages: conversationRef.current.length > 0 ? conversationRef.current : undefined,
+      attachments: currentAttachments,
       models: selectedModels.length > 0 ? selectedModels : undefined,
       onStreamStart: (label, provider) => {
         setProviderTurns((prev) => {
@@ -419,6 +426,39 @@ export default function App() {
 
     void cancel;
   }, [prompt, systemPrompt, showSystem, selectedModels, running, saveCurrentChat]);
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files) return;
+
+    for (const file of Array.from(files)) {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const base64 = (reader.result as string).split(",")[1];
+        const isImage = file.type.startsWith("image/");
+        const isPdf = file.type === "application/pdf";
+        if (!isImage && !isPdf) return;
+
+        setAttachments((prev) => [
+          ...prev,
+          {
+            type: isImage ? "image" : "pdf",
+            mimeType: file.type,
+            data: base64,
+            name: file.name,
+          },
+        ]);
+      };
+      reader.readAsDataURL(file);
+    }
+
+    // Reset input so the same file can be re-selected
+    e.target.value = "";
+  };
+
+  const removeAttachment = (index: number) => {
+    setAttachments((prev) => prev.filter((_, i) => i !== index));
+  };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -788,7 +828,46 @@ export default function App() {
               className="w-full bg-gray-800/50 text-gray-300 rounded-xl px-4 py-2.5 mb-2 text-sm focus:outline-none focus:ring-1 focus:ring-gray-600 border border-gray-700/50"
             />
           )}
+
+          {/* Attachment previews */}
+          {attachments.length > 0 && (
+            <div className="flex flex-wrap gap-2 mb-2">
+              {attachments.map((att, i) => (
+                <div key={i} className="flex items-center gap-1.5 bg-gray-800/70 rounded-lg px-2.5 py-1.5 text-xs text-gray-300 border border-gray-700/50">
+                  {att.type === "image" ? (
+                    <img src={`data:${att.mimeType};base64,${att.data}`} className="w-8 h-8 rounded object-cover" />
+                  ) : (
+                    <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 text-red-400" viewBox="0 0 20 20" fill="currentColor">
+                      <path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z" clipRule="evenodd" />
+                    </svg>
+                  )}
+                  <span className="truncate max-w-[120px]">{att.name}</span>
+                  <button onClick={() => removeAttachment(i)} className="text-gray-500 hover:text-red-400 ml-1">×</button>
+                </div>
+              ))}
+            </div>
+          )}
+
           <div className="flex gap-2 md:gap-3">
+            {/* File attach button */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/jpeg,image/png,image/gif,image/webp,application/pdf"
+              multiple
+              onChange={handleFileSelect}
+              className="hidden"
+            />
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              className="self-end text-gray-400 hover:text-white p-2.5 transition-colors shrink-0"
+              title="Attach image or PDF"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+              </svg>
+            </button>
+
             <textarea
               placeholder={conversationRef.current.length > 0 ? "Continue the conversation..." : "Enter your prompt..."}
               value={prompt}

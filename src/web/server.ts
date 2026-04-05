@@ -16,7 +16,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const app = express();
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: "50mb" }));
 
 // Serve static frontend in production
 app.use(express.static(join(__dirname, "client", "dist")));
@@ -48,7 +48,7 @@ app.get("/api/models", (_req, res) => {
 
 // POST /api/run — run prompt with SSE streaming
 app.post("/api/run", (req, res) => {
-  const { prompt, systemPrompt, models: modelIds, providers, preset, maxTokens, stream, messages } = req.body;
+  const { prompt, systemPrompt, models: modelIds, providers, preset, maxTokens, stream, messages, attachments } = req.body;
 
   if (!prompt) {
     res.status(400).json({ error: "prompt is required" });
@@ -108,6 +108,7 @@ app.post("/api/run", (req, res) => {
       prompt,
       systemPrompt,
       messages,
+      attachments,
       maxTokens: maxTokens ?? 2048,
       stream: true,
       onStreamStart: (label, provider) => {
@@ -139,6 +140,7 @@ app.post("/api/run", (req, res) => {
     prompt,
     systemPrompt,
     messages,
+    attachments,
     maxTokens: maxTokens ?? 2048,
   }).then((results) => {
     res.json({ results });
