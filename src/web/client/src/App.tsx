@@ -502,6 +502,31 @@ export default function App() {
             </div>
           ) : (
             <div className="space-y-5">
+              {/* Preset tier buttons */}
+              <div className="flex gap-1.5">
+                {(["flagship", "balanced", "fast"] as const).map((tier) => {
+                  const tierModels = (Object.keys(modelsData.models) as ProviderName[]).flatMap(
+                    (p) => modelsData.availableProviders.includes(p)
+                      ? modelsData.models[p].filter((m) => m.tier === tier).map((m) => m.id)
+                      : []
+                  );
+                  const allSelected = tierModels.length > 0 && tierModels.every((id) => selectedModels.includes(id));
+                  return (
+                    <button
+                      key={tier}
+                      onClick={() => setSelectedModels(allSelected ? [] : tierModels)}
+                      className={`flex-1 text-xs px-2 py-1.5 rounded-lg transition-colors font-medium capitalize ${
+                        allSelected
+                          ? "bg-white/20 text-white"
+                          : "bg-white/5 text-gray-400 hover:bg-white/10 hover:text-gray-200"
+                      }`}
+                    >
+                      {tier}
+                    </button>
+                  );
+                })}
+              </div>
+
               {(Object.keys(modelsData.models) as ProviderName[]).map((provider) => {
                 const available = modelsData.availableProviders.includes(provider);
                 const theme = THEMES[provider];
