@@ -456,14 +456,18 @@ export default function App() {
           saveCurrentChat();
         }
 
-        // Auto-generate summary if multiple providers responded
+        // Auto-generate summary and consensus if multiple providers responded
         const successes = results.filter((r) => r.status === "success");
         if (successes.length >= 2) {
           setSummaryLoading(true);
           try {
-            const summaryContent = await fetchSummary(userPrompt, results, "combined");
+            const [summaryContent, consensusContent] = await Promise.all([
+              fetchSummary(userPrompt, results, "combined"),
+              fetchSummary(userPrompt, results, "consensus"),
+            ]);
             setSummary({ type: "combined", content: summaryContent });
-            setExpandedCards((prev) => new Set([...prev, "__summary"]));
+            setConsensus({ type: "consensus", content: consensusContent });
+            setExpandedCards((prev) => new Set([...prev, "__summary", "__consensus"]));
           } catch (err) {
             console.error(err);
           }
@@ -553,9 +557,13 @@ export default function App() {
 
       if (successes.length >= 2 && !summaryRef.current) {
         setSummaryLoading(true);
-        fetchSummary(lastPrompt.current, results, "combined").then((content) => {
-          setSummary({ type: "combined", content });
-          setExpandedCards((prev) => new Set([...prev, "__summary"]));
+        Promise.all([
+          fetchSummary(lastPrompt.current, results, "combined"),
+          fetchSummary(lastPrompt.current, results, "consensus"),
+        ]).then(([summaryContent, consensusContent]) => {
+          setSummary({ type: "combined", content: summaryContent });
+          setConsensus({ type: "consensus", content: consensusContent });
+          setExpandedCards((prev) => new Set([...prev, "__summary", "__consensus"]));
         }).catch(console.error).finally(() => setSummaryLoading(false));
       }
     }, 3_000);
@@ -1018,7 +1026,7 @@ export default function App() {
           )}
 
           {/* Compare button — available after models finish, if no consensus yet */}
-          {!running && !anyStreaming && !consensus && !summaryLoading && activeProviders.length >= 2 && allResults.current.length >= 2 && (
+          {!running && !anyStreaming && !consensus && !summaryLoading && activeProviders.length >= 2 && (
             <div className="flex items-center gap-3 mb-4 px-2">
               <button
                 onClick={handleConsensus}

@@ -319,9 +319,13 @@ export default function MobileApp() {
         if (successes.length >= 2) {
           setSummaryLoading(true);
           try {
-            const content = await fetchSummary(userPrompt, results, "combined");
-            setSummary({ type: "combined", content });
-            setExpandedCards((prev) => new Set([...prev, "__summary"]));
+            const [summaryContent, consensusContent] = await Promise.all([
+              fetchSummary(userPrompt, results, "combined"),
+              fetchSummary(userPrompt, results, "consensus"),
+            ]);
+            setSummary({ type: "combined", content: summaryContent });
+            setConsensus({ type: "consensus", content: consensusContent });
+            setExpandedCards((prev) => new Set([...prev, "__summary", "__consensus"]));
           } catch (err) { console.error(err); }
           setSummaryLoading(false);
         }
@@ -399,9 +403,13 @@ export default function MobileApp() {
 
       if (successes.length >= 2 && !summaryRef.current) {
         setSummaryLoading(true);
-        fetchSummary(lastPrompt.current, results, "combined").then((content) => {
-          setSummary({ type: "combined", content });
-          setExpandedCards((prev) => new Set([...prev, "__summary"]));
+        Promise.all([
+          fetchSummary(lastPrompt.current, results, "combined"),
+          fetchSummary(lastPrompt.current, results, "consensus"),
+        ]).then(([summaryContent, consensusContent]) => {
+          setSummary({ type: "combined", content: summaryContent });
+          setConsensus({ type: "consensus", content: consensusContent });
+          setExpandedCards((prev) => new Set([...prev, "__summary", "__consensus"]));
         }).catch(console.error).finally(() => setSummaryLoading(false));
       }
     }, 3_000);
