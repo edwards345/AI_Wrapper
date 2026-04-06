@@ -546,23 +546,13 @@ export default function App() {
       const activeLabels = Object.keys(current).filter((k) => current[k].length > 0);
       if (activeLabels.length === 0) return;
       const stillStreaming = Object.values(current).some((turns) => turns.some((t) => t.streaming));
-
-      const results = collectResults(current);
-      const successes = results.filter((r) => r.status === "success");
-
-      if (stillStreaming && successes.length < activeLabels.length) return;
+      if (stillStreaming) return; // Wait for ALL models to finish
 
       summarizeTriggered.current = true;
       setRunning(false);
 
-      if (stillStreaming) {
-        const next: Record<string, Turn[]> = {};
-        for (const [label, turns] of Object.entries(current)) {
-          next[label] = turns.map((t) => t.streaming ? { ...t, streaming: false } : t);
-        }
-        setProviderTurns(next);
-      }
-
+      const results = collectResults(current);
+      const successes = results.filter((r) => r.status === "success");
       if (successes.length >= 2 && !summaryRef.current) {
         setSummaryLoading(true);
         Promise.all([
