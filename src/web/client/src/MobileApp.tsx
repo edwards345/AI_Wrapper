@@ -322,30 +322,9 @@ export default function MobileApp() {
           saveCurrentChat();
         }
       },
-      onDone: async (results) => {
-        setRunning(false);
+      onDone: async () => {
+        // Don't set running=false here — let the poll handle completion
         if (conversationRef.current.length > 0) saveCurrentChat();
-        setProviderTurns((prev) => {
-          const next = { ...prev };
-          for (const label of Object.keys(next)) {
-            next[label] = next[label].map((t) => t.streaming ? { ...t, streaming: false } : t);
-          }
-          return next;
-        });
-        const successes = results.filter((r) => r.status === "success");
-        if (successes.length >= 2) {
-          setSummaryLoading(true);
-          try {
-            const [summaryContent, consensusContent] = await Promise.all([
-              fetchSummary(userPrompt, results, "combined"),
-              fetchSummary(userPrompt, results, "consensus"),
-            ]);
-            setSummary({ type: "combined", content: summaryContent });
-            setConsensus({ type: "consensus", content: consensusContent });
-            setExpandedCards((prev) => new Set([...prev, "__summary", "__consensus"]));
-          } catch (err) { console.error(err); }
-          setSummaryLoading(false);
-        }
       },
       onError: (error) => { console.error(error); setRunning(false); },
     });

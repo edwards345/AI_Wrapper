@@ -267,19 +267,40 @@ export default function App() {
     );
   };
 
-  // Save current conversation to localStorage
-  const saveCurrentChat = useCallback(() => {
-    if (conversationRef.current.length === 0) return;
+  // Save current conversation — use refs to avoid stale closures
+  const currentChatIdRef = useRef(currentChatId);
+  currentChatIdRef.current = currentChatId;
+  const selectedModelsRef = useRef(selectedModels);
+  selectedModelsRef.current = selectedModels;
+  const systemPromptRef = useRef(systemPrompt);
+  systemPromptRef.current = systemPrompt;
+  const showSystemRef = useRef(showSystem);
+  showSystemRef.current = showSystem;
+  const providerTurnsRef2 = useRef(providerTurns);
+  providerTurnsRef2.current = providerTurns;
 
-    const id = currentChatId || crypto.randomUUID();
+  const saveCurrentChat = useCallback(() => {
+    // Build conversation from providerTurns if conversationRef is empty
+    if (conversationRef.current.length === 0) {
+      const turns = providerTurnsRef2.current;
+      const firstLabel = Object.keys(turns)[0];
+      if (!firstLabel || !turns[firstLabel]?.length) return;
+      const userTurn = turns[firstLabel].find((t) => t.role === "user");
+      const assistantTurn = turns[firstLabel].find((t) => t.role === "assistant" && t.content);
+      if (userTurn) conversationRef.current.push({ role: "user", content: userTurn.content });
+      if (assistantTurn) conversationRef.current.push({ role: "assistant", content: assistantTurn.content });
+      if (conversationRef.current.length === 0) return;
+    }
+
+    const id = currentChatIdRef.current || crypto.randomUUID();
     const title = conversationRef.current[0]?.content.slice(0, 60) || "Untitled";
     const chat: SavedChat = {
       id,
       title,
       timestamp: Date.now(),
       messages: [...conversationRef.current],
-      selectedModels,
-      systemPrompt: showSystem ? systemPrompt : undefined,
+      selectedModels: selectedModelsRef.current,
+      systemPrompt: showSystemRef.current ? systemPromptRef.current : undefined,
     };
 
     saveChatToServer(chat);
@@ -287,8 +308,11 @@ export default function App() {
       const filtered = prev.filter((c) => c.id !== id);
       return [chat, ...filtered].slice(0, 100);
     });
-    setCurrentChatId(id);
-  }, [currentChatId, selectedModels, systemPrompt, showSystem]);
+    if (!currentChatIdRef.current) {
+      currentChatIdRef.current = id;
+      setCurrentChatId(id);
+    }
+  }, []);
 
   const loadChat = (chat: SavedChat) => {
     conversationRef.current = chat.messages;
@@ -449,41 +473,12 @@ export default function App() {
           saveCurrentChat();
         }
       },
-      onDone: async (results) => {
-        setRunning(false);
-
-        // Mark all streams as done in case onStreamEnd didn't fire
-        setProviderTurns((prev) => {
-          const next = { ...prev };
-          for (const label of Object.keys(next)) {
-            next[label] = next[label].map((t) =>
-              t.streaming ? { ...t, streaming: false } : t
-            );
-          }
-          return next;
-        });
-
-        // Save in case onStreamEnd didn't fire
+      onDone: async () => {
+        // Don't set running=false here — let the poll handle completion
+        // after confirming all expected models have responded.
+        // Just save the chat as a fallback.
         if (conversationRef.current.length > 0) {
           saveCurrentChat();
-        }
-
-        // Auto-generate summary and consensus if multiple providers responded
-        const successes = results.filter((r) => r.status === "success");
-        if (successes.length >= 2) {
-          setSummaryLoading(true);
-          try {
-            const [summaryContent, consensusContent] = await Promise.all([
-              fetchSummary(userPrompt, results, "combined"),
-              fetchSummary(userPrompt, results, "consensus"),
-            ]);
-            setSummary({ type: "combined", content: summaryContent });
-            setConsensus({ type: "consensus", content: consensusContent });
-            setExpandedCards((prev) => new Set([...prev, "__summary", "__consensus"]));
-          } catch (err) {
-            console.error(err);
-          }
-          setSummaryLoading(false);
         }
       },
       onError: (error) => {
