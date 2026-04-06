@@ -340,33 +340,24 @@ export default function MobileApp() {
     });
   }, [prompt, systemPrompt, showSystem, selectedModels, running, attachments, saveCurrentChat]);
 
-  // Build results from providerTurns (fallback when onStreamEnd events are lost)
-  const buildResultsFromTurns = useCallback((): ProviderResult[] => {
+  // Collect results from providerTurns (fallback when onStreamEnd events are lost)
+  function collectResults(turns: Record<string, Turn[]>): ProviderResult[] {
     const results: ProviderResult[] = [];
-    for (const [label, turns] of Object.entries(providerTurns)) {
-      const lastAssistant = [...turns].reverse().find((t) => t.role === "assistant");
-      if (!lastAssistant) continue;
-      if (lastAssistant.result) {
-        // Use the actual result if available
-        if (!allResults.current.some((r) => r.label === label)) {
-          allResults.current.push(lastAssistant.result);
-        }
-        results.push(lastAssistant.result);
-      } else if (lastAssistant.content) {
-        // Build a synthetic result from streamed content
-        const synth: ProviderResult = {
-          provider: lastAssistant.provider || "claude",
+    for (const [label, t] of Object.entries(turns)) {
+      const last = [...t].reverse().find((x) => x.role === "assistant");
+      if (!last || (!last.content && !last.result)) continue;
+      if (last.result) {
+        results.push(last.result);
+      } else if (last.content) {
+        results.push({
+          provider: last.provider || "claude",
           model: "", label, status: "success",
-          content: lastAssistant.content, latencyMs: 0,
-        };
-        if (!allResults.current.some((r) => r.label === label)) {
-          allResults.current.push(synth);
-        }
-        results.push(synth);
+          content: last.content, latencyMs: 0,
+        });
       }
     }
     return results;
-  }, [providerTurns]);
+  }
 
   // Fallback: auto-summarize if all models finished but onDone never fired
   const summarizeTriggered = useRef(false);
@@ -378,12 +369,11 @@ export default function MobileApp() {
     if (stillStreaming) return;
     if (summarizeTriggered.current) return;
 
-    // All active providers have finished (no streaming), trigger summary
     summarizeTriggered.current = true;
     setRunning(false);
     if (conversationRef.current.length > 0) saveCurrentChat();
 
-    const results = buildResultsFromTurns();
+    const results = collectResults(providerTurns);
     const successes = results.filter((r) => r.status === "success");
     if (successes.length >= 2 && !summary) {
       setSummaryLoading(true);
@@ -392,9 +382,9 @@ export default function MobileApp() {
         setExpandedCards((prev) => new Set([...prev, "__summary"]));
       }).catch(console.error).finally(() => setSummaryLoading(false));
     }
-  }, [running, providerTurns, summary, saveCurrentChat, buildResultsFromTurns]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [running, providerTurns, summary]);
 
-  // Reset the trigger when a new prompt is sent
   useEffect(() => {
     if (running) summarizeTriggered.current = false;
   }, [running]);
@@ -408,7 +398,7 @@ export default function MobileApp() {
       return next;
     });
     setRunning(false);
-    const results = buildResultsFromTurns();
+    const results = collectResults(providerTurns);
     if (results.filter((r) => r.status === "success").length >= 2) {
       setSummaryLoading(true);
       try {
@@ -418,10 +408,11 @@ export default function MobileApp() {
       } catch (err) { console.error(err); }
       setSummaryLoading(false);
     }
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [providerTurns]);
 
   const handleConsensus = useCallback(async () => {
-    const results = buildResultsFromTurns();
+    const results = collectResults(providerTurns);
     if (results.filter((r) => r.status === "success").length < 2) return;
     setSummaryLoading(true);
     try {
