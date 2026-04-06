@@ -186,7 +186,6 @@ export default function App() {
   // Per-provider turn history: provider -> Turn[]
   const [providerTurns, setProviderTurns] = useState<Record<string, Turn[]>>({});
   const [summary, setSummary] = useState<{ type: string; content: string } | null>(null);
-  const [consensus, setConsensus] = useState<{ type: string; content: string } | null>(null);
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set());
 
@@ -353,7 +352,6 @@ export default function App() {
     allResults.current = [];
     setProviderTurns({});
     setSummary(null);
-    setConsensus(null);
     setExpandedCards(new Set());
     setCurrentChatId(null);
     setPrompt("");
@@ -373,7 +371,6 @@ export default function App() {
     setRunning(true);
     setCompleted(false);
     setSummary(null);
-    setConsensus(null);
     allResults.current = [];
     lastPrompt.current = prompt;
     expectedModelsCount.current = selectedModels.length;
@@ -600,19 +597,16 @@ export default function App() {
         }
       }
 
-      // Generate summary + consensus
+      // Generate summary
       const results = collectResults(current);
       const successes = results.filter((r) => r.status === "success");
       if (successes.length >= 2 && !summaryRef.current) {
         setSummaryLoading(true);
-        Promise.all([
-          fetchSummary(lastPrompt.current, results, "combined"),
-          fetchSummary(lastPrompt.current, results, "consensus"),
-        ]).then(([summaryContent, consensusContent]) => {
-          setSummary({ type: "combined", content: summaryContent });
-          setConsensus({ type: "consensus", content: consensusContent });
-          setExpandedCards((prev) => new Set([...prev, "__summary", "__consensus"]));
-        }).catch(console.error).finally(() => setSummaryLoading(false));
+        fetchSummary(lastPrompt.current, results, "combined")
+          .then((content) => {
+            setSummary({ type: "combined", content });
+            setExpandedCards((prev) => new Set([...prev, "__summary"]));
+          }).catch(console.error).finally(() => setSummaryLoading(false));
       }
     }, 3_000);
     return () => clearInterval(interval);
@@ -651,22 +645,6 @@ export default function App() {
     }
   }, []);
 
-  // Manual consensus comparison
-  const handleConsensus = useCallback(async () => {
-    const results = collectResults(providerTurnsRef.current);
-    const successes = results.filter((r) => r.status === "success");
-    if (successes.length < 2) return;
-
-    setSummaryLoading(true);
-    try {
-      const consensusContent = await fetchSummary(lastPrompt.current, results, "consensus");
-      setConsensus({ type: "consensus", content: consensusContent });
-      setExpandedCards((prev) => new Set([...prev, "__consensus"]));
-    } catch (err) {
-      console.error(err);
-    }
-    setSummaryLoading(false);
-  }, []);
 
   const TEXT_EXTENSIONS = new Set([
     "text/plain", "text/csv", "text/markdown", "text/html", "text/xml",
@@ -1051,7 +1029,7 @@ export default function App() {
               <div className="flex items-center justify-center h-full">
                 <div className="text-center">
                   <p className="text-gray-600 text-lg">Select models and enter a prompt</p>
-                  <p className="text-gray-700 text-sm mt-1">Summary and consensus appear automatically</p>
+                  <p className="text-gray-700 text-sm mt-1">Summary appears automatically after all AIs respond</p>
                 </div>
               </div>
             );
@@ -1078,19 +1056,11 @@ export default function App() {
                     Summarize Now
                   </button>
                 )}
-                {isComplete && !consensus && activeProviders.length >= 2 && (
-                  <button
-                    onClick={handleConsensus}
-                    className="bg-white/10 hover:bg-white/15 text-white text-xs px-3 py-1.5 rounded-lg transition-colors whitespace-nowrap ml-auto"
-                  >
-                    Compare
-                  </button>
-                )}
               </div>
             );
           })()}
 
-          {/* Combined Summary — collapsible */}
+          {/* Summary — collapsible */}
           {summary && (
             <div className="mb-2">
               <button
@@ -1109,7 +1079,7 @@ export default function App() {
                 <div className="flex items-center gap-2">
                   <ProviderIcon provider="claude" />
                   <span className={expandedCards.has("__summary") ? "text-white font-semibold text-sm" : "text-sm font-medium text-[#d4a27a]"}>
-                    Combined Summary
+                    Summary
                   </span>
                   <span className={expandedCards.has("__summary") ? "text-white/60 text-xs" : "text-gray-500 text-xs"}>powered by Claude</span>
                 </div>
@@ -1119,41 +1089,6 @@ export default function App() {
                 <div className="mt-1 rounded-2xl overflow-hidden shadow-lg">
                   <div className="bg-[#faf6f1] px-5 py-4">
                     <MarkdownContent content={summary.content} theme={THEMES.claude} />
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Consensus Analysis — collapsible */}
-          {consensus && (
-            <div className="mb-2">
-              <button
-                onClick={() => {
-                  setExpandedCards((prev) => {
-                    const next = new Set(prev);
-                    if (next.has("__consensus")) next.delete("__consensus");
-                    else next.add("__consensus");
-                    return next;
-                  });
-                }}
-                className={`w-full flex items-center justify-between px-4 py-3 rounded-xl transition-colors ${
-                  expandedCards.has("__consensus") ? "bg-[#8b6a3e]" : "bg-gray-800/50 hover:bg-gray-800"
-                }`}
-              >
-                <div className="flex items-center gap-2">
-                  <ProviderIcon provider="claude" />
-                  <span className={expandedCards.has("__consensus") ? "text-white font-semibold text-sm" : "text-sm font-medium text-[#d4a27a]"}>
-                    Consensus Analysis
-                  </span>
-                  <span className={expandedCards.has("__consensus") ? "text-white/60 text-xs" : "text-gray-500 text-xs"}>powered by Claude</span>
-                </div>
-                <span className="text-gray-500 text-xs">{expandedCards.has("__consensus") ? "▼" : "▶"}</span>
-              </button>
-              {expandedCards.has("__consensus") && (
-                <div className="mt-1 rounded-2xl overflow-hidden shadow-lg">
-                  <div className="bg-[#faf6f1] px-5 py-4">
-                    <MarkdownContent content={consensus.content} theme={THEMES.claude} />
                   </div>
                 </div>
               )}

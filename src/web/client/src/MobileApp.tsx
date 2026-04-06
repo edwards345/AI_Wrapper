@@ -82,7 +82,6 @@ export default function MobileApp() {
   const [completed, setCompleted] = useState(false);
   const [providerTurns, setProviderTurns] = useState<Record<string, Turn[]>>({});
   const [summary, setSummary] = useState<{ type: string; content: string } | null>(null);
-  const [consensus, setConsensus] = useState<{ type: string; content: string } | null>(null);
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set());
   const [view, setView] = useState<MobileView>("chat");
@@ -159,7 +158,7 @@ export default function MobileApp() {
   // Auto-scroll to bottom
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
-  }, [providerTurns, summary, consensus]);
+  }, [providerTurns, summary]);
 
   const toggleModel = (id: string) => {
     setSelectedModels((prev) => prev.includes(id) ? prev.filter((m) => m !== id) : [...prev, id]);
@@ -213,7 +212,6 @@ export default function MobileApp() {
     allResults.current = [];
     setProviderTurns({});
     setSummary(null);
-    setConsensus(null);
     setExpandedCards(new Set());
     currentChatIdRef.current = null;
     setCurrentChatId(null);
@@ -228,7 +226,6 @@ export default function MobileApp() {
     if (chat.systemPrompt) { setSystemPrompt(chat.systemPrompt); setShowSystem(true); }
     setProviderTurns({});
     setSummary(null);
-    setConsensus(null);
     setView("chat");
   };
 
@@ -246,7 +243,6 @@ export default function MobileApp() {
     setRunning(true);
     setCompleted(false);
     setSummary(null);
-    setConsensus(null);
     allResults.current = [];
     lastPrompt.current = prompt;
     expectedModelsCount.current = selectedModels.length;
@@ -442,19 +438,16 @@ export default function MobileApp() {
         }
       }
 
-      // Generate summary + consensus
+      // Generate summary
       const results = collectResults(current);
       const successes = results.filter((r) => r.status === "success");
       if (successes.length >= 2 && !summaryRef.current) {
         setSummaryLoading(true);
-        Promise.all([
-          fetchSummary(lastPrompt.current, results, "combined"),
-          fetchSummary(lastPrompt.current, results, "consensus"),
-        ]).then(([summaryContent, consensusContent]) => {
-          setSummary({ type: "combined", content: summaryContent });
-          setConsensus({ type: "consensus", content: consensusContent });
-          setExpandedCards((prev) => new Set([...prev, "__summary", "__consensus"]));
-        }).catch(console.error).finally(() => setSummaryLoading(false));
+        fetchSummary(lastPrompt.current, results, "combined")
+          .then((content) => {
+            setSummary({ type: "combined", content });
+            setExpandedCards((prev) => new Set([...prev, "__summary"]));
+          }).catch(console.error).finally(() => setSummaryLoading(false));
       }
     }, 3_000);
     return () => clearInterval(interval);
@@ -485,17 +478,7 @@ export default function MobileApp() {
     }
   }, []);
 
-  const handleConsensus = useCallback(async () => {
-    const results = collectResults(providerTurnsRef.current);
-    if (results.filter((r) => r.status === "success").length < 2) return;
-    setSummaryLoading(true);
-    try {
-      const content = await fetchSummary(lastPrompt.current, results, "consensus");
-      setConsensus({ type: "consensus", content });
-      setExpandedCards((prev) => new Set([...prev, "__consensus"]));
-    } catch (err) { console.error(err); }
-    setSummaryLoading(false);
-  }, []);
+
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -748,11 +731,6 @@ export default function MobileApp() {
                     Summarize Now
                   </button>
                 )}
-                {isComplete && !consensus && activeProviders.length >= 2 && (
-                  <button onClick={handleConsensus} className="bg-white/10 text-white text-xs px-2.5 py-1 rounded-lg ml-auto">
-                    Compare
-                  </button>
-                )}
               </div>
             );
           })()}
@@ -761,7 +739,7 @@ export default function MobileApp() {
           {summary && (
             <div className="rounded-xl overflow-hidden border border-gray-800/50">
               <button onClick={() => toggleCard("__summary")} className={`w-full flex items-center justify-between px-3 py-2.5 ${expandedCards.has("__summary") ? "bg-[#c08a5a]" : "bg-gray-800/50"}`}>
-                <span className={`text-xs font-semibold ${expandedCards.has("__summary") ? "text-white" : "text-[#d4a27a]"}`}>Combined Summary</span>
+                <span className={`text-xs font-semibold ${expandedCards.has("__summary") ? "text-white" : "text-[#d4a27a]"}`}>Summary</span>
                 <span className="text-gray-500 text-xs">{expandedCards.has("__summary") ? "▼" : "▶"}</span>
               </button>
               {expandedCards.has("__summary") && (
@@ -780,28 +758,6 @@ export default function MobileApp() {
             </div>
           )}
 
-          {/* Consensus */}
-          {consensus && (
-            <div className="rounded-xl overflow-hidden border border-gray-800/50">
-              <button onClick={() => toggleCard("__consensus")} className={`w-full flex items-center justify-between px-3 py-2.5 ${expandedCards.has("__consensus") ? "bg-[#8b6a3e]" : "bg-gray-800/50"}`}>
-                <span className={`text-xs font-semibold ${expandedCards.has("__consensus") ? "text-white" : "text-[#d4a27a]"}`}>Consensus Analysis</span>
-                <span className="text-gray-500 text-xs">{expandedCards.has("__consensus") ? "▼" : "▶"}</span>
-              </button>
-              {expandedCards.has("__consensus") && (
-                <div className="bg-[#faf6f1] px-3 py-2.5 max-h-[50vh] overflow-y-auto">
-                  <div className={THEMES.claude.prose}>
-                    <ReactMarkdown remarkPlugins={[remarkGfm]} components={{
-                      code({ className, children, ...props }) {
-                        if (className?.includes("language-")) return <pre className={THEMES.claude.codeBlock}><code {...props}>{children}</code></pre>;
-                        return <code className={THEMES.claude.codeBorder} {...props}>{children}</code>;
-                      },
-                      pre({ children }) { return <>{children}</>; },
-                    }}>{consensus.content}</ReactMarkdown>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
 
 
           {/* Provider responses */}

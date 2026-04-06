@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { loadConfig } from "../config/loader.js";
 import { MODELS, findModel, type ProviderName } from "../engine/models.js";
 import { runAll, type ModelSelection, type RunParams } from "../engine/runner.js";
-import { combinedSummary, consensusSummary } from "../engine/summarizer.js";
+import { generateSummary } from "../engine/summarizer.js";
 import { createAnthropicClient } from "../providers/anthropic.js";
 import { createOpenAIClient } from "../providers/openai.js";
 import { createGeminiClient } from "../providers/gemini.js";
@@ -165,12 +165,7 @@ app.post("/api/summary", async (req, res) => {
   }
 
   try {
-    let content: string;
-    if (mode === "consensus") {
-      content = await consensusSummary(config.anthropicApiKey, prompt, results);
-    } else {
-      content = await combinedSummary(config.anthropicApiKey, prompt, results);
-    }
+    const content = await generateSummary(config.anthropicApiKey, prompt, results);
     res.json({ content });
   } catch (err) {
     res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
