@@ -494,6 +494,36 @@ export default function App() {
     turns.some((t) => t.streaming)
   );
 
+  // Fallback: auto-summarize if all models finished but onDone never fired
+  const summarizeTriggered = useRef(false);
+  useEffect(() => {
+    if (!running) return;
+    if (allResults.current.length === 0) return;
+    const stillStreaming = Object.values(providerTurns).some((turns) => turns.some((t) => t.streaming));
+    if (stillStreaming) return;
+    const activeCount = Object.keys(providerTurns).filter((k) => providerTurns[k].length > 0).length;
+    if (activeCount === 0 || allResults.current.length < activeCount) return;
+    if (summarizeTriggered.current) return;
+
+    summarizeTriggered.current = true;
+    setRunning(false);
+    if (conversationRef.current.length > 0) saveCurrentChat();
+
+    const results = allResults.current;
+    const successes = results.filter((r) => r.status === "success");
+    if (successes.length >= 2 && !summary) {
+      setSummaryLoading(true);
+      fetchSummary(lastPrompt.current, results, "combined").then((content) => {
+        setSummary({ type: "combined", content });
+        setExpandedCards((prev) => new Set([...prev, "__summary"]));
+      }).catch(console.error).finally(() => setSummaryLoading(false));
+    }
+  }, [running, providerTurns, summary, saveCurrentChat]);
+
+  useEffect(() => {
+    if (running) summarizeTriggered.current = false;
+  }, [running]);
+
   // Manual summarize — stop waiting for stuck models and summarize what we have
   const handleSummarizeNow = useCallback(async () => {
     // Mark all streaming turns as done

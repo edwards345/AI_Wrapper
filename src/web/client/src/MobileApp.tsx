@@ -340,6 +340,39 @@ export default function MobileApp() {
     });
   }, [prompt, systemPrompt, showSystem, selectedModels, running, attachments, saveCurrentChat]);
 
+  // Fallback: auto-summarize if all models finished but onDone never fired
+  const summarizeTriggered = useRef(false);
+  useEffect(() => {
+    // Only run if we're supposedly still running, have results, and nothing is streaming
+    if (!running) return;
+    if (allResults.current.length === 0) return;
+    const stillStreaming = Object.values(providerTurns).some((turns) => turns.some((t) => t.streaming));
+    if (stillStreaming) return;
+    // Check that we have at least as many results as active providers (all done)
+    const activeCount = Object.keys(providerTurns).filter((k) => providerTurns[k].length > 0).length;
+    if (activeCount === 0 || allResults.current.length < activeCount) return;
+    if (summarizeTriggered.current) return;
+
+    summarizeTriggered.current = true;
+    setRunning(false);
+    if (conversationRef.current.length > 0) saveCurrentChat();
+
+    const results = allResults.current;
+    const successes = results.filter((r) => r.status === "success");
+    if (successes.length >= 2 && !summary) {
+      setSummaryLoading(true);
+      fetchSummary(lastPrompt.current, results, "combined").then((content) => {
+        setSummary({ type: "combined", content });
+        setExpandedCards((prev) => new Set([...prev, "__summary"]));
+      }).catch(console.error).finally(() => setSummaryLoading(false));
+    }
+  }, [running, providerTurns, summary, saveCurrentChat]);
+
+  // Reset the trigger when a new prompt is sent
+  useEffect(() => {
+    if (running) summarizeTriggered.current = false;
+  }, [running]);
+
   const handleSummarizeNow = useCallback(async () => {
     setProviderTurns((prev) => {
       const next = { ...prev };
