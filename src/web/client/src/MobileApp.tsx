@@ -354,7 +354,7 @@ export default function MobileApp() {
 
   if (!modelsData) {
     return (
-      <div className="flex items-center justify-center h-screen bg-gray-950">
+      <div className="flex items-center justify-center h-dvh bg-gray-950">
         <div className="animate-pulse text-gray-500">Loading AI Wrapper...</div>
       </div>
     );
@@ -382,7 +382,7 @@ export default function MobileApp() {
   };
 
   return (
-    <div className="flex flex-col h-screen bg-gray-950 text-gray-100">
+    <div className="flex flex-col h-dvh bg-gray-950 text-gray-100">
       {/* Top nav */}
       <div className="flex items-center justify-between px-3 py-2.5 bg-[#0c0c0e] border-b border-gray-800/50">
         <h1 className="text-sm font-bold">AI Wrapper</h1>
