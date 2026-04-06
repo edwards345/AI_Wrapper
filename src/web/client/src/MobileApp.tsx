@@ -356,60 +356,54 @@ export default function MobileApp() {
   runningRef.current = running;
   summaryRef.current = summary;
 
+  const providerTurnsRef = useRef(providerTurns);
+  providerTurnsRef.current = providerTurns;
+
   useEffect(() => {
     const interval = setInterval(() => {
+      const current = providerTurnsRef.current;
+
       if (!runningRef.current) {
-        // If not running but still have stuck streams, clear them
-        setProviderTurns((current) => {
-          const hasStuck = Object.values(current).some((turns) => turns.some((t) => t.streaming));
-          if (!hasStuck) return current;
-          const next = { ...current };
-          for (const label of Object.keys(next)) {
-            next[label] = next[label].map((t) => t.streaming ? { ...t, streaming: false } : t);
+        const hasStuck = Object.values(current).some((turns) => turns.some((t) => t.streaming));
+        if (hasStuck) {
+          const next: Record<string, Turn[]> = {};
+          for (const [label, turns] of Object.entries(current)) {
+            next[label] = turns.map((t) => t.streaming ? { ...t, streaming: false } : t);
           }
-          return next;
-        });
+          setProviderTurns(next);
+        }
         return;
       }
       if (summarizeTriggered.current) return;
 
-      setProviderTurns((current) => {
-        const activeLabels = Object.keys(current).filter((k) => current[k].length > 0);
-        if (activeLabels.length === 0) return current;
-        const stillStreaming = Object.values(current).some((turns) => turns.some((t) => t.streaming));
+      const activeLabels = Object.keys(current).filter((k) => current[k].length > 0);
+      if (activeLabels.length === 0) return;
+      const stillStreaming = Object.values(current).some((turns) => turns.some((t) => t.streaming));
 
-        // Count completed results
-        const results = collectResults(current);
-        const successes = results.filter((r) => r.status === "success");
-        const allDone = !stillStreaming;
+      const results = collectResults(current);
+      const successes = results.filter((r) => r.status === "success");
 
-        // Trigger summary if all done, OR if we have enough results
-        if (!allDone && successes.length < 2) return current;
-        if (!allDone && successes.length < activeLabels.length) return current;
+      if (stillStreaming && successes.length < activeLabels.length) return;
 
-        // All done or all possible results collected — trigger summary
-        summarizeTriggered.current = true;
-        setRunning(false);
-        if (conversationRef.current.length > 0) saveCurrentChat();
+      summarizeTriggered.current = true;
+      setRunning(false);
+      if (conversationRef.current.length > 0) saveCurrentChat();
 
-        // Clear any stuck streams
-        const next = stillStreaming ? { ...current } : current;
-        if (stillStreaming) {
-          for (const label of Object.keys(next)) {
-            next[label] = next[label].map((t) => t.streaming ? { ...t, streaming: false } : t);
-          }
+      if (stillStreaming) {
+        const next: Record<string, Turn[]> = {};
+        for (const [label, turns] of Object.entries(current)) {
+          next[label] = turns.map((t) => t.streaming ? { ...t, streaming: false } : t);
         }
+        setProviderTurns(next);
+      }
 
-        if (successes.length >= 2 && !summaryRef.current) {
-          setSummaryLoading(true);
-          fetchSummary(lastPrompt.current, results, "combined").then((content) => {
-            setSummary({ type: "combined", content });
-            setExpandedCards((prev) => new Set([...prev, "__summary"]));
-          }).catch(console.error).finally(() => setSummaryLoading(false));
-        }
-
-        return stillStreaming ? next : current;
-      });
+      if (successes.length >= 2 && !summaryRef.current) {
+        setSummaryLoading(true);
+        fetchSummary(lastPrompt.current, results, "combined").then((content) => {
+          setSummary({ type: "combined", content });
+          setExpandedCards((prev) => new Set([...prev, "__summary"]));
+        }).catch(console.error).finally(() => setSummaryLoading(false));
+      }
     }, 3_000);
     return () => clearInterval(interval);
   }, []);
