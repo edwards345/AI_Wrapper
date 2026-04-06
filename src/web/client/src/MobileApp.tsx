@@ -86,6 +86,7 @@ export default function MobileApp() {
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set());
   const [view, setView] = useState<MobileView>("chat");
+  const [saveFlash, setSaveFlash] = useState(false);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
 
   // Chat history
@@ -101,6 +102,8 @@ export default function MobileApp() {
   const allResults = useRef<ProviderResult[]>([]);
   const lastPrompt = useRef("");
   const expectedModelsCount = useRef(0);
+  const promptStartTime = useRef(0);
+  const MAX_WAIT_MS = 90_000;
   const fileInputRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const lastTokenTime = useRef<Record<string, number>>({});
@@ -173,6 +176,17 @@ export default function MobileApp() {
   showSystemRef.current = showSystem;
 
   const saveCurrentChat = useCallback(() => {
+    // Build conversation from providerTurns if empty
+    if (conversationRef.current.length === 0) {
+      const turns = providerTurnsRef.current;
+      const firstLabel = Object.keys(turns)[0];
+      if (firstLabel) {
+        const userTurn = turns[firstLabel].find((t: Turn) => t.role === "user");
+        const assistantTurn = turns[firstLabel].find((t: Turn) => t.role === "assistant" && t.content);
+        if (userTurn) conversationRef.current.push({ role: "user", content: userTurn.content });
+        if (assistantTurn) conversationRef.current.push({ role: "assistant", content: assistantTurn.content });
+      }
+    }
     if (conversationRef.current.length === 0) return;
     const id = currentChatIdRef.current || crypto.randomUUID();
     const title = conversationRef.current[0]?.content.slice(0, 60) || "Untitled";
@@ -236,6 +250,7 @@ export default function MobileApp() {
     allResults.current = [];
     lastPrompt.current = prompt;
     expectedModelsCount.current = selectedModels.length;
+    promptStartTime.current = Date.now();
     const userPrompt = prompt;
     const currentAttachments = attachments.length > 0 ? [...attachments] : undefined;
     setPrompt("");
@@ -378,16 +393,56 @@ export default function MobileApp() {
 
       const activeLabels = Object.keys(current).filter((k) => current[k].length > 0);
       if (activeLabels.length === 0) return;
-      // Wait until we've heard from all expected models AND none are still streaming
-      if (activeLabels.length < expectedModelsCount.current) return;
+
       const stillStreaming = Object.values(current).some((turns) => turns.some((t) => t.streaming));
-      if (stillStreaming) return;
+      const allModelsResponded = activeLabels.length >= expectedModelsCount.current;
+      const timedOut = Date.now() - promptStartTime.current > MAX_WAIT_MS;
+
+      const allDone = allModelsResponded && !stillStreaming;
+      if (!allDone && !timedOut) return;
 
       summarizeTriggered.current = true;
       setRunning(false);
       setCompleted(true);
-      if (conversationRef.current.length > 0) saveCurrentChat();
 
+      // Clear stuck streams
+      if (stillStreaming) {
+        const next: Record<string, Turn[]> = {};
+        for (const [label, turns] of Object.entries(current)) {
+          next[label] = turns.map((t) => t.streaming ? { ...t, streaming: false } : t);
+        }
+        setProviderTurns(next);
+      }
+
+      // Auto-save
+      if (conversationRef.current.length === 0) {
+        const firstLabel = Object.keys(current)[0];
+        if (firstLabel) {
+          const userTurn = current[firstLabel].find((t) => t.role === "user");
+          const assistantTurn = current[firstLabel].find((t) => t.role === "assistant" && t.content);
+          if (userTurn) conversationRef.current.push({ role: "user", content: userTurn.content });
+          if (assistantTurn) conversationRef.current.push({ role: "assistant", content: assistantTurn.content });
+        }
+      }
+      if (conversationRef.current.length > 0) {
+        const id = currentChatIdRef.current || crypto.randomUUID();
+        const chat: SavedChat = {
+          id,
+          title: conversationRef.current[0]?.content.slice(0, 60) || "Untitled",
+          timestamp: Date.now(),
+          messages: [...conversationRef.current],
+          selectedModels: selectedModelsRef.current,
+          systemPrompt: showSystemRef.current ? systemPromptRef.current : undefined,
+        };
+        saveChatToServer(chat);
+        setSavedChats((prev) => [chat, ...prev.filter((c) => c.id !== id)].slice(0, 100));
+        if (!currentChatIdRef.current) {
+          currentChatIdRef.current = id;
+          setCurrentChatId(id);
+        }
+      }
+
+      // Generate summary + consensus
       const results = collectResults(current);
       const successes = results.filter((r) => r.status === "success");
       if (successes.length >= 2 && !summaryRef.current) {
@@ -583,10 +638,10 @@ export default function MobileApp() {
             Models
           </button>
           <button
-            onClick={() => { saveCurrentChat(); }}
-            className="text-xs px-2.5 py-1.5 rounded-lg bg-white/5 text-gray-400"
+            onClick={() => { saveCurrentChat(); setSaveFlash(true); setTimeout(() => setSaveFlash(false), 2000); }}
+            className={`text-xs px-2.5 py-1.5 rounded-lg transition-colors ${saveFlash ? "bg-green-600 text-white" : "bg-white/5 text-gray-400"}`}
           >
-            Save
+            {saveFlash ? "Saved!" : "Save"}
           </button>
           <button
             onClick={startNewChat}

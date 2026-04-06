@@ -195,11 +195,14 @@ export default function App() {
   const allResults = useRef<ProviderResult[]>([]);
   const lastPrompt = useRef("");
   const expectedModelsCount = useRef(0);
+  const promptStartTime = useRef(0);
+  const MAX_WAIT_MS = 90_000; // Max time to wait for all models
 
   // Chat history
   const [savedChats, setSavedChats] = useState<SavedChat[]>([]);
   const [currentChatId, setCurrentChatId] = useState<string | null>(null);
   const [showHistory, setShowHistory] = useState(false);
+  const [saveFlash, setSaveFlash] = useState(false);
 
   // Mobile sidebar
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -374,6 +377,7 @@ export default function App() {
     allResults.current = [];
     lastPrompt.current = prompt;
     expectedModelsCount.current = selectedModels.length;
+    promptStartTime.current = Date.now();
 
     const userPrompt = prompt;
     const currentAttachments = attachments.length > 0 ? [...attachments] : undefined;
@@ -544,15 +548,59 @@ export default function App() {
 
       const activeLabels = Object.keys(current).filter((k) => current[k].length > 0);
       if (activeLabels.length === 0) return;
-      // Wait until we've heard from all expected models AND none are still streaming
-      if (activeLabels.length < expectedModelsCount.current) return;
-      const stillStreaming = Object.values(current).some((turns) => turns.some((t) => t.streaming));
-      if (stillStreaming) return;
 
+      const stillStreaming = Object.values(current).some((turns) => turns.some((t) => t.streaming));
+      const allModelsResponded = activeLabels.length >= expectedModelsCount.current;
+      const timedOut = Date.now() - promptStartTime.current > MAX_WAIT_MS;
+
+      // Proceed if: (all models responded AND none streaming) OR max wait exceeded
+      const allDone = allModelsResponded && !stillStreaming;
+      if (!allDone && !timedOut) return;
+
+      // Mark complete
       summarizeTriggered.current = true;
       setRunning(false);
       setCompleted(true);
 
+      // Clear any stuck streams
+      if (stillStreaming) {
+        const next: Record<string, Turn[]> = {};
+        for (const [label, turns] of Object.entries(current)) {
+          next[label] = turns.map((t) => t.streaming ? { ...t, streaming: false } : t);
+        }
+        setProviderTurns(next);
+      }
+
+      // Auto-save
+      if (conversationRef.current.length === 0) {
+        // Build from turns if conversationRef is empty
+        const firstLabel = Object.keys(current)[0];
+        if (firstLabel) {
+          const userTurn = current[firstLabel].find((t) => t.role === "user");
+          const assistantTurn = current[firstLabel].find((t) => t.role === "assistant" && t.content);
+          if (userTurn) conversationRef.current.push({ role: "user", content: userTurn.content });
+          if (assistantTurn) conversationRef.current.push({ role: "assistant", content: assistantTurn.content });
+        }
+      }
+      if (conversationRef.current.length > 0) {
+        const id = currentChatIdRef.current || crypto.randomUUID();
+        const chat: SavedChat = {
+          id,
+          title: conversationRef.current[0]?.content.slice(0, 60) || "Untitled",
+          timestamp: Date.now(),
+          messages: [...conversationRef.current],
+          selectedModels: selectedModelsRef.current,
+          systemPrompt: showSystemRef.current ? systemPromptRef.current : undefined,
+        };
+        saveChatToServer(chat);
+        setSavedChats((prev) => [chat, ...prev.filter((c) => c.id !== id)].slice(0, 100));
+        if (!currentChatIdRef.current) {
+          currentChatIdRef.current = id;
+          setCurrentChatId(id);
+        }
+      }
+
+      // Generate summary + consensus
       const results = collectResults(current);
       const successes = results.filter((r) => r.status === "success");
       if (successes.length >= 2 && !summaryRef.current) {
@@ -850,10 +898,10 @@ export default function App() {
               New
             </button>
             <button
-              onClick={() => saveCurrentChat()}
-              className="flex-1 bg-white/10 hover:bg-white/15 text-white text-xs px-3 py-2 rounded-lg transition-colors"
+              onClick={() => { saveCurrentChat(); setSaveFlash(true); setTimeout(() => setSaveFlash(false), 2000); }}
+              className={`flex-1 text-xs px-3 py-2 rounded-lg transition-colors ${saveFlash ? "bg-green-600 text-white" : "bg-white/10 hover:bg-white/15 text-white"}`}
             >
-              Save
+              {saveFlash ? "Saved!" : "Save"}
             </button>
             <button
               onClick={() => { if (!showHistory) loadChatsFromServer().then(setSavedChats); setShowHistory(!showHistory); }}
