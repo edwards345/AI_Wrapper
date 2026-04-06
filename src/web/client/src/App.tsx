@@ -79,7 +79,7 @@ const THEMES: Record<ProviderName, ProviderTheme> = {
   grok: {
     card: "rounded-2xl overflow-hidden shadow-lg",
     header: "bg-[#18181b] px-5 py-3 border-b border-[#27272a]",
-    headerText: "text-[#f97316] font-semibold text-sm tracking-wide",
+    headerText: "text-[#d0d0d0] font-semibold text-sm tracking-wide",
     userBubble: "bg-[#18181b] rounded-2xl px-4 py-3 ml-8 border border-[#27272a]",
     userText: "text-[#b0b0b0] text-sm",
     body: "bg-[#09090b] px-5 py-4",
