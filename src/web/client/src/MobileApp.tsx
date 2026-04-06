@@ -29,9 +29,9 @@ const THEMES: Record<ProviderName, {
     codeBorder: "bg-[#282a2c] text-[#8ab4f8] rounded px-1.5 py-0.5 text-xs font-mono",
   },
   grok: {
-    accent: "#f97316", bg: "bg-[#09090b]", text: "text-[#fafafa]", icon: "X", name: "Grok",
-    prose: "[&_h1]:text-white [&_h1]:text-base [&_h1]:font-semibold [&_h1]:mb-2 [&_h2]:text-white [&_h2]:text-sm [&_h2]:font-semibold [&_h2]:mb-1 [&_h3]:text-white [&_h3]:text-sm [&_h3]:font-semibold [&_p]:text-[#fafafa] [&_p]:text-sm [&_p]:leading-relaxed [&_p]:mb-2 [&_ul]:text-[#fafafa] [&_ul]:text-sm [&_ul]:ml-4 [&_ul]:mb-2 [&_ul]:list-disc [&_ol]:text-[#fafafa] [&_ol]:text-sm [&_ol]:ml-4 [&_ol]:mb-2 [&_ol]:list-decimal [&_li]:mb-1 [&_strong]:text-white [&_a]:text-[#f97316] [&_a]:underline [&_blockquote]:border-l-2 [&_blockquote]:border-[#f97316] [&_blockquote]:pl-3 [&_blockquote]:italic [&_table]:text-sm [&_table]:w-full [&_th]:text-left [&_th]:pb-1 [&_th]:border-b [&_th]:border-[#27272a] [&_td]:py-1 [&_td]:border-b [&_td]:border-[#1c1c1f]",
-    codeBlock: "bg-[#18181b] text-[#fafafa] rounded-lg p-3 text-xs font-mono overflow-x-auto my-2 border border-[#27272a]",
+    accent: "#f97316", bg: "bg-[#09090b]", text: "text-[#b0b0b0]", icon: "X", name: "Grok",
+    prose: "[&_h1]:text-[#d0d0d0] [&_h1]:text-base [&_h1]:font-semibold [&_h1]:mb-2 [&_h2]:text-[#d0d0d0] [&_h2]:text-sm [&_h2]:font-semibold [&_h2]:mb-1 [&_h3]:text-[#d0d0d0] [&_h3]:text-sm [&_h3]:font-semibold [&_p]:text-[#b0b0b0] [&_p]:text-sm [&_p]:leading-relaxed [&_p]:mb-2 [&_ul]:text-[#b0b0b0] [&_ul]:text-sm [&_ul]:ml-4 [&_ul]:mb-2 [&_ul]:list-disc [&_ol]:text-[#b0b0b0] [&_ol]:text-sm [&_ol]:ml-4 [&_ol]:mb-2 [&_ol]:list-decimal [&_li]:mb-1 [&_strong]:text-[#d0d0d0] [&_a]:text-[#f97316] [&_a]:underline [&_blockquote]:border-l-2 [&_blockquote]:border-[#f97316] [&_blockquote]:pl-3 [&_blockquote]:italic [&_table]:text-sm [&_table]:w-full [&_th]:text-left [&_th]:pb-1 [&_th]:border-b [&_th]:border-[#27272a] [&_th]:text-[#d0d0d0] [&_td]:py-1 [&_td]:border-b [&_td]:border-[#1c1c1f]",
+    codeBlock: "bg-[#18181b] text-[#b0b0b0] rounded-lg p-3 text-xs font-mono overflow-x-auto my-2 border border-[#27272a]",
     codeBorder: "bg-[#18181b] text-[#f97316] rounded px-1.5 py-0.5 text-xs font-mono border border-[#27272a]",
   },
 };
