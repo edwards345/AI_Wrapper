@@ -198,6 +198,33 @@ export default function App() {
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Client-side streaming timeout — mark streams as done if no token in 120s
+  const lastTokenTime = useRef<Record<string, number>>({});
+  const STREAM_IDLE_TIMEOUT = 120_000;
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const now = Date.now();
+      setProviderTurns((prev) => {
+        let changed = false;
+        const next = { ...prev };
+        for (const label of Object.keys(next)) {
+          const lastTime = lastTokenTime.current[label];
+          const hasStreaming = next[label].some((t) => t.streaming);
+          if (hasStreaming && lastTime && now - lastTime > STREAM_IDLE_TIMEOUT) {
+            changed = true;
+            next[label] = next[label].map((t) =>
+              t.streaming ? { ...t, streaming: false } : t
+            );
+            delete lastTokenTime.current[label];
+          }
+        }
+        return changed ? next : prev;
+      });
+    }, 5_000);
+    return () => clearInterval(interval);
+  }, []);
+
   useEffect(() => {
     fetchModels().then((data) => {
       setModelsData(data);
@@ -314,6 +341,7 @@ export default function App() {
       attachments: currentAttachments,
       models: selectedModels.length > 0 ? selectedModels : undefined,
       onStreamStart: (label, provider) => {
+        lastTokenTime.current[label] = Date.now();
         setProviderTurns((prev) => {
           const next = { ...prev };
           const existing = next[label] || [];
@@ -326,6 +354,7 @@ export default function App() {
         });
       },
       onStreamToken: (label, token) => {
+        lastTokenTime.current[label] = Date.now();
         setProviderTurns((prev) => {
           const turns = prev[label];
           if (!turns) return prev;
