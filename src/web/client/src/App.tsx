@@ -88,7 +88,7 @@ const THEMES: Record<ProviderName, ProviderTheme> = {
     cursor: "bg-[#f97316]",
     streamLabel: "text-[#f97316]",
     accent: "accent-[#f97316]",
-    sidebarText: "text-[#f97316]",
+    sidebarText: "text-[#b0b0b0]",
     icon: "X",
     codeBlock: "bg-[#18181b] text-[#fafafa] rounded-lg p-3 text-xs font-mono overflow-x-auto my-2 border border-[#27272a]",
     codeBorder: "bg-[#18181b] text-[#f97316] rounded px-1.5 py-0.5 text-xs font-mono border border-[#27272a]",
