@@ -102,54 +102,26 @@ export default function MobileApp() {
     };
   }, []);
 
-  // Client-side streaming timeout
-  const [timedOutLabels, setTimedOutLabels] = useState<string[]>([]);
-
+  // Client-side streaming timeout (120s idle) — checked every 5s
   useEffect(() => {
     const interval = setInterval(() => {
       const now = Date.now();
       setProviderTurns((prev) => {
         let changed = false;
         const next = { ...prev };
-        const newlyTimedOut: string[] = [];
         for (const label of Object.keys(next)) {
           const lt = lastTokenTime.current[label];
           if (next[label].some((t) => t.streaming) && lt && now - lt > 120_000) {
             changed = true;
             next[label] = next[label].map((t) => t.streaming ? { ...t, streaming: false } : t);
             delete lastTokenTime.current[label];
-            newlyTimedOut.push(label);
           }
-        }
-        if (newlyTimedOut.length > 0) {
-          setTimedOutLabels((prev) => [...prev, ...newlyTimedOut]);
         }
         return changed ? next : prev;
       });
     }, 5_000);
     return () => clearInterval(interval);
   }, []);
-
-  // Auto-summarize after timeout clears all remaining streams
-  useEffect(() => {
-    if (timedOutLabels.length === 0) return;
-    setTimedOutLabels([]);
-
-    // Check if all streams are now done
-    const stillStreaming = Object.values(providerTurns).some((turns) => turns.some((t) => t.streaming));
-    if (stillStreaming) return;
-
-    setRunning(false);
-    const results = allResults.current;
-    const successes = results.filter((r) => r.status === "success");
-    if (successes.length >= 2 && !summary) {
-      setSummaryLoading(true);
-      fetchSummary(lastPrompt.current, results, "combined").then((content) => {
-        setSummary({ type: "combined", content });
-        setExpandedCards((prev) => new Set([...prev, "__summary"]));
-      }).catch(console.error).finally(() => setSummaryLoading(false));
-    }
-  }, [timedOutLabels, providerTurns, summary]);
 
   useEffect(() => {
     fetchModels().then((data) => {
@@ -359,31 +331,44 @@ export default function MobileApp() {
     return results;
   }
 
-  // Fallback: auto-summarize if all models finished but onDone never fired
+  // Fallback: poll to auto-summarize if all models finished but onDone never fired
   const summarizeTriggered = useRef(false);
+  const runningRef = useRef(false);
+  const summaryRef = useRef<{ type: string; content: string } | null>(null);
+  runningRef.current = running;
+  summaryRef.current = summary;
+
   useEffect(() => {
-    if (!running) return;
-    const activeCount = Object.keys(providerTurns).filter((k) => providerTurns[k].length > 0).length;
-    if (activeCount === 0) return;
-    const stillStreaming = Object.values(providerTurns).some((turns) => turns.some((t) => t.streaming));
-    if (stillStreaming) return;
-    if (summarizeTriggered.current) return;
+    const interval = setInterval(() => {
+      if (!runningRef.current) return;
+      if (summarizeTriggered.current) return;
 
-    summarizeTriggered.current = true;
-    setRunning(false);
-    if (conversationRef.current.length > 0) saveCurrentChat();
+      // Read providerTurns via a state snapshot
+      setProviderTurns((current) => {
+        const activeLabels = Object.keys(current).filter((k) => current[k].length > 0);
+        if (activeLabels.length === 0) return current;
+        const stillStreaming = Object.values(current).some((turns) => turns.some((t) => t.streaming));
+        if (stillStreaming) return current;
 
-    const results = collectResults(providerTurns);
-    const successes = results.filter((r) => r.status === "success");
-    if (successes.length >= 2 && !summary) {
-      setSummaryLoading(true);
-      fetchSummary(lastPrompt.current, results, "combined").then((content) => {
-        setSummary({ type: "combined", content });
-        setExpandedCards((prev) => new Set([...prev, "__summary"]));
-      }).catch(console.error).finally(() => setSummaryLoading(false));
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [running, providerTurns, summary]);
+        // All done — trigger summary
+        summarizeTriggered.current = true;
+        setRunning(false);
+
+        const results = collectResults(current);
+        const successes = results.filter((r) => r.status === "success");
+        if (successes.length >= 2 && !summaryRef.current) {
+          setSummaryLoading(true);
+          fetchSummary(lastPrompt.current, results, "combined").then((content) => {
+            setSummary({ type: "combined", content });
+            setExpandedCards((prev) => new Set([...prev, "__summary"]));
+          }).catch(console.error).finally(() => setSummaryLoading(false));
+        }
+
+        return current; // no change to state
+      });
+    }, 3_000);
+    return () => clearInterval(interval);
+  }, []);
 
   useEffect(() => {
     if (running) summarizeTriggered.current = false;
