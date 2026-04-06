@@ -704,11 +704,11 @@ export default function MobileApp() {
           )}
 
           {/* Still waiting + summarize button */}
-          {(running || anyStreaming) && activeProviders.length > 0 && (
+          {(running || anyStreaming || summaryLoading) && activeProviders.length > 0 && (
             <div className="flex items-center gap-2 px-1">
               <div className="w-3.5 h-3.5 border-2 border-t-[#d4a27a] border-r-[#10a37f] border-b-[#8ab4f8] border-l-[#f97316] rounded-full animate-spin shrink-0" />
-              <span className="text-gray-400 text-xs">Waiting...</span>
-              {allResults.current.length >= 2 && (
+              <span className="text-gray-400 text-xs">{summaryLoading ? "Generating summary..." : anyStreaming ? "Waiting..." : "Processing..."}</span>
+              {!summaryLoading && activeProviders.length >= 2 && (
                 <button onClick={handleSummarizeNow} className="bg-white/10 text-white text-xs px-2.5 py-1 rounded-lg ml-auto">
                   Summarize Now
                 </button>
@@ -716,8 +716,8 @@ export default function MobileApp() {
             </div>
           )}
 
-          {/* Summary loading */}
-          {summaryLoading && (
+          {/* Summary loading (standalone, when no other spinner showing) */}
+          {summaryLoading && activeProviders.length === 0 && (
             <div className="flex items-center gap-2 px-1">
               <div className="w-3.5 h-3.5 border-2 border-[#d4a27a] border-t-transparent rounded-full animate-spin" />
               <span className="text-gray-400 text-xs">Generating summary...</span>
@@ -802,9 +802,14 @@ export default function MobileApp() {
                   </div>
                   <div className="flex items-center gap-2">
                     {lastAssistant?.result && (
-                      <span className="text-gray-500 text-[10px]">
-                        {lastAssistant.result.latencyMs < 1000 ? `${lastAssistant.result.latencyMs}ms` : `${(lastAssistant.result.latencyMs / 1000).toFixed(1)}s`}
+                      <span className={`text-[10px] ${lastAssistant.result.status === "timeout" ? "text-amber-400" : "text-gray-500"}`}>
+                        {lastAssistant.result.status === "timeout"
+                          ? "timeout"
+                          : lastAssistant.result.latencyMs < 1000 ? `${lastAssistant.result.latencyMs}ms` : `${(lastAssistant.result.latencyMs / 1000).toFixed(1)}s`}
                       </span>
+                    )}
+                    {!lastAssistant?.result && lastAssistant && !lastAssistant.streaming && (
+                      <span className="text-amber-400 text-[10px]">timeout</span>
                     )}
                     <span className="text-gray-500 text-xs">{isExpanded ? "▼" : "▶"}</span>
                   </div>

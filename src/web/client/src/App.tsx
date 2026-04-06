@@ -1024,10 +1024,10 @@ export default function App() {
           )}
 
           {/* Still waiting for models / summarize button */}
-          {(running || anyStreaming) && activeProviders.length > 0 && (
+          {(running || anyStreaming || summaryLoading) && activeProviders.length > 0 && (
             <div className="flex items-center gap-3 mb-4 px-2">
               <div className="w-4 h-4 border-2 border-t-[#d4a27a] border-r-[#10a37f] border-b-[#8ab4f8] border-l-[#f97316] rounded-full animate-spin shrink-0" />
-              <span className="text-gray-400 text-sm">Waiting for all models...</span>
+              <span className="text-gray-400 text-sm">{summaryLoading ? "Generating summary..." : anyStreaming ? "Waiting for all models..." : "Processing..."}</span>
               {allResults.current.length >= 2 && (
                 <button
                   onClick={handleSummarizeNow}
@@ -1168,11 +1168,16 @@ export default function App() {
                       </div>
                       <div className="flex items-center gap-3">
                         {lastAssistant?.result && (
-                          <span className={`${theme.meta}`}>
-                            {lastAssistant.result.latencyMs < 1000
-                              ? `${lastAssistant.result.latencyMs}ms`
-                              : `${(lastAssistant.result.latencyMs / 1000).toFixed(1)}s`}
+                          <span className={`${theme.meta} ${lastAssistant.result.status === "timeout" ? "text-amber-400" : ""}`}>
+                            {lastAssistant.result.status === "timeout"
+                              ? "timeout"
+                              : lastAssistant.result.latencyMs < 1000
+                                ? `${lastAssistant.result.latencyMs}ms`
+                                : `${(lastAssistant.result.latencyMs / 1000).toFixed(1)}s`}
                           </span>
+                        )}
+                        {!lastAssistant?.result && lastAssistant && !lastAssistant.streaming && (
+                          <span className="text-amber-400 text-xs">timeout</span>
                         )}
                         <span className="text-gray-500 text-xs">{isExpanded ? "▼" : "▶"}</span>
                       </div>
