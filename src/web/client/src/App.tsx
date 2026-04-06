@@ -222,7 +222,7 @@ export default function App() {
 
   // Client-side streaming timeout — mark streams as done if no token in 120s
   const lastTokenTime = useRef<Record<string, number>>({});
-  const STREAM_IDLE_TIMEOUT = 120_000;
+  const STREAM_IDLE_TIMEOUT = 60_000;
 
   useEffect(() => {
     const interval = setInterval(() => {

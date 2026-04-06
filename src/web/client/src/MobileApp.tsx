@@ -128,7 +128,7 @@ export default function MobileApp() {
         const next = { ...prev };
         for (const label of Object.keys(next)) {
           const lt = lastTokenTime.current[label];
-          if (next[label].some((t) => t.streaming) && lt && now - lt > 120_000) {
+          if (next[label].some((t) => t.streaming) && lt && now - lt > 60_000) {
             changed = true;
             next[label] = next[label].map((t) => t.streaming ? { ...t, streaming: false } : t);
             delete lastTokenTime.current[label];
