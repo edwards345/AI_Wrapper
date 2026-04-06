@@ -101,18 +101,7 @@ export default function MobileApp() {
     }
   }, []);
 
-  // Fix mobile viewport height — window.innerHeight is the only reliable value
-  const [viewportHeight, setViewportHeight] = useState(window.innerHeight);
-  useEffect(() => {
-    const update = () => setViewportHeight(window.innerHeight);
-    window.addEventListener("resize", update);
-    // Also fire on orientation change and visual viewport resize (iOS keyboard)
-    window.visualViewport?.addEventListener("resize", update);
-    return () => {
-      window.removeEventListener("resize", update);
-      window.visualViewport?.removeEventListener("resize", update);
-    };
-  }, []);
+  // No JS viewport height — use CSS fixed positioning instead
 
   // Client-side streaming timeout (120s idle) — checked every 5s
   useEffect(() => {
@@ -555,7 +544,7 @@ export default function MobileApp() {
 
   if (!modelsData) {
     return (
-      <div className="flex items-center justify-center bg-gray-950" style={{ height: viewportHeight }}>
+      <div className="fixed inset-0 flex items-center justify-center bg-gray-950">
         <div className="animate-pulse text-gray-500">Loading AI Wrapper...</div>
       </div>
     );
@@ -583,7 +572,7 @@ export default function MobileApp() {
   };
 
   return (
-    <div className="flex flex-col bg-gray-950 text-gray-100 overflow-hidden" style={{ height: viewportHeight }}>
+    <div className="fixed inset-0 flex flex-col bg-gray-950 text-gray-100 overflow-hidden">
       {/* Top nav */}
       <div className="flex items-center justify-between px-3 py-2.5 bg-[#0c0c0e] border-b border-gray-800/50 shrink-0">
         <div className="flex items-center gap-2">
@@ -832,7 +821,7 @@ export default function MobileApp() {
       )}
 
       {/* Bottom input bar */}
-      <div className="border-t border-gray-800/50 p-2.5 bg-[#0c0c0e] shrink-0">
+      <div className="border-t border-gray-800/50 p-2.5 bg-[#0c0c0e] shrink-0" style={{ paddingBottom: "max(0.625rem, env(safe-area-inset-bottom))" }}>
         {showSystem && (
           <input type="text" placeholder="System prompt" value={systemPrompt} onChange={(e) => setSystemPrompt(e.target.value)}
             className="w-full bg-gray-800/50 text-gray-300 rounded-xl px-3 py-2 mb-2 text-sm focus:outline-none border border-gray-700/50" />
