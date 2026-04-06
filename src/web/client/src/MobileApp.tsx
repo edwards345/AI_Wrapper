@@ -89,6 +89,19 @@ export default function MobileApp() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const lastTokenTime = useRef<Record<string, number>>({});
 
+  // Fix mobile viewport height — window.innerHeight is the only reliable value
+  const [viewportHeight, setViewportHeight] = useState(window.innerHeight);
+  useEffect(() => {
+    const update = () => setViewportHeight(window.innerHeight);
+    window.addEventListener("resize", update);
+    // Also fire on orientation change and visual viewport resize (iOS keyboard)
+    window.visualViewport?.addEventListener("resize", update);
+    return () => {
+      window.removeEventListener("resize", update);
+      window.visualViewport?.removeEventListener("resize", update);
+    };
+  }, []);
+
   // Client-side streaming timeout
   const [timedOutLabels, setTimedOutLabels] = useState<string[]>([]);
 
@@ -452,7 +465,7 @@ export default function MobileApp() {
 
   if (!modelsData) {
     return (
-      <div className="flex items-center justify-center h-dvh bg-gray-950">
+      <div className="flex items-center justify-center bg-gray-950" style={{ height: viewportHeight }}>
         <div className="animate-pulse text-gray-500">Loading AI Wrapper...</div>
       </div>
     );
@@ -480,9 +493,9 @@ export default function MobileApp() {
   };
 
   return (
-    <div className="flex flex-col h-dvh bg-gray-950 text-gray-100">
+    <div className="flex flex-col bg-gray-950 text-gray-100 overflow-hidden" style={{ height: viewportHeight }}>
       {/* Top nav */}
-      <div className="flex items-center justify-between px-3 py-2.5 bg-[#0c0c0e] border-b border-gray-800/50">
+      <div className="flex items-center justify-between px-3 py-2.5 bg-[#0c0c0e] border-b border-gray-800/50 shrink-0">
         <h1 className="text-sm font-bold">AI Wrapper</h1>
         <div className="flex gap-1">
           <button
@@ -726,7 +739,7 @@ export default function MobileApp() {
       )}
 
       {/* Bottom input bar */}
-      <div className="border-t border-gray-800/50 p-2.5 bg-[#0c0c0e]">
+      <div className="border-t border-gray-800/50 p-2.5 bg-[#0c0c0e] shrink-0">
         {showSystem && (
           <input type="text" placeholder="System prompt" value={systemPrompt} onChange={(e) => setSystemPrompt(e.target.value)}
             className="w-full bg-gray-800/50 text-gray-300 rounded-xl px-3 py-2 mb-2 text-sm focus:outline-none border border-gray-700/50" />
