@@ -102,18 +102,26 @@ const PROVIDER_DISPLAY: Record<ProviderName, string> = {
   grok: "Grok",
 };
 
-/* ───────── Chat History helpers ───────── */
+/* ───────── Chat History helpers (server-side) ───────── */
 
-const STORAGE_KEY = "aiwrapper_chats";
-
-function loadChats(): SavedChat[] {
+async function loadChatsFromServer(): Promise<SavedChat[]> {
   try {
-    return JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
-  } catch { return []; }
+    const res = await fetch("/api/chats");
+    if (res.ok) return await res.json();
+  } catch { /* ignore */ }
+  return [];
 }
 
-function saveChats(chats: SavedChat[]) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(chats));
+function saveChatToServer(chat: SavedChat) {
+  fetch("/api/chats", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(chat),
+  }).catch(() => {});
+}
+
+function deleteChatFromServer(id: string) {
+  fetch(`/api/chats/${id}`, { method: "DELETE" }).catch(() => {});
 }
 
 /* ───────── Components ───────── */
@@ -187,7 +195,7 @@ export default function App() {
   const lastPrompt = useRef("");
 
   // Chat history
-  const [savedChats, setSavedChats] = useState<SavedChat[]>(loadChats());
+  const [savedChats, setSavedChats] = useState<SavedChat[]>([]);
   const [currentChatId, setCurrentChatId] = useState<string | null>(null);
   const [showHistory, setShowHistory] = useState(false);
 
@@ -248,6 +256,7 @@ export default function App() {
       }
       setSelectedModels(defaults);
     });
+    loadChatsFromServer().then(setSavedChats);
   }, []);
 
   const toggleModel = (id: string) => {
@@ -266,16 +275,16 @@ export default function App() {
       id,
       title,
       timestamp: Date.now(),
-      messages: conversationRef.current,
+      messages: [...conversationRef.current],
       selectedModels,
       systemPrompt: showSystem ? systemPrompt : undefined,
     };
 
-    const chats = loadChats().filter((c) => c.id !== id);
-    chats.unshift(chat);
-    if (chats.length > 50) chats.length = 50; // Keep last 50
-    saveChats(chats);
-    setSavedChats(chats);
+    saveChatToServer(chat);
+    setSavedChats((prev) => {
+      const filtered = prev.filter((c) => c.id !== id);
+      return [chat, ...filtered].slice(0, 100);
+    });
     setCurrentChatId(id);
   }, [currentChatId, selectedModels, systemPrompt, showSystem]);
 
@@ -322,9 +331,8 @@ export default function App() {
   };
 
   const deleteChat = (id: string) => {
-    const chats = loadChats().filter((c) => c.id !== id);
-    saveChats(chats);
-    setSavedChats(chats);
+    deleteChatFromServer(id);
+    setSavedChats((prev) => prev.filter((c) => c.id !== id));
     if (currentChatId === id) {
       startNewChat();
     }
@@ -847,10 +855,16 @@ export default function App() {
               onClick={() => { startNewChat(); setSidebarOpen(false); }}
               className="flex-1 bg-white/10 hover:bg-white/15 text-white text-xs px-3 py-2 rounded-lg transition-colors"
             >
-              New Chat
+              New
             </button>
             <button
-              onClick={() => setShowHistory(!showHistory)}
+              onClick={() => saveCurrentChat()}
+              className="flex-1 bg-white/10 hover:bg-white/15 text-white text-xs px-3 py-2 rounded-lg transition-colors"
+            >
+              Save
+            </button>
+            <button
+              onClick={() => { if (!showHistory) loadChatsFromServer().then(setSavedChats); setShowHistory(!showHistory); }}
               className="flex-1 bg-white/10 hover:bg-white/15 text-white text-xs px-3 py-2 rounded-lg transition-colors"
             >
               {showHistory ? "Models" : "History"}

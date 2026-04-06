@@ -48,17 +48,26 @@ interface Turn {
 
 type MobileView = "chat" | "models" | "history";
 
-/* ───────── Chat History helpers ───────── */
+/* ───────── Chat History helpers (server-side) ───────── */
 
-const STORAGE_KEY = "aiwrapper_chats";
-
-function loadChats(): SavedChat[] {
-  try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]"); }
-  catch { return []; }
+async function loadChatsFromServer(): Promise<SavedChat[]> {
+  try {
+    const res = await fetch("/api/chats");
+    if (res.ok) return await res.json();
+  } catch { /* ignore */ }
+  return [];
 }
 
-function saveChats(chats: SavedChat[]) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(chats));
+function saveChatToServer(chat: SavedChat) {
+  fetch("/api/chats", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(chat),
+  }).catch(() => {});
+}
+
+function deleteChatFromServer(id: string) {
+  fetch(`/api/chats/${id}`, { method: "DELETE" }).catch(() => {});
 }
 
 /* ───────── Mobile App ───────── */
@@ -79,8 +88,13 @@ export default function MobileApp() {
   const [attachments, setAttachments] = useState<Attachment[]>([]);
 
   // Chat history
-  const [savedChats, setSavedChats] = useState<SavedChat[]>(loadChats());
+  const [savedChats, setSavedChats] = useState<SavedChat[]>([]);
   const [currentChatId, setCurrentChatId] = useState<string | null>(null);
+
+  // Load chats from server on mount
+  useEffect(() => {
+    loadChatsFromServer().then(setSavedChats);
+  }, []);
 
   const conversationRef = useRef<ChatMessage[]>([]);
   const allResults = useRef<ProviderResult[]>([]);
@@ -166,11 +180,11 @@ export default function MobileApp() {
       selectedModels: selectedModelsRef.current,
       systemPrompt: showSystemRef.current ? systemPromptRef.current : undefined,
     };
-    const chats = loadChats().filter((c) => c.id !== id);
-    chats.unshift(chat);
-    if (chats.length > 50) chats.length = 50;
-    saveChats(chats);
-    setSavedChats(chats);
+    saveChatToServer(chat);
+    setSavedChats((prev) => {
+      const filtered = prev.filter((c) => c.id !== id);
+      return [chat, ...filtered].slice(0, 100);
+    });
     if (!currentChatIdRef.current) {
       currentChatIdRef.current = id;
       setCurrentChatId(id);
@@ -203,9 +217,8 @@ export default function MobileApp() {
   };
 
   const deleteChat = (id: string) => {
-    const chats = loadChats().filter((c) => c.id !== id);
-    saveChats(chats);
-    setSavedChats(chats);
+    deleteChatFromServer(id);
+    setSavedChats((prev) => prev.filter((c) => c.id !== id));
     if (currentChatId === id) startNewChat();
   };
 
@@ -582,7 +595,7 @@ export default function MobileApp() {
         </div>
         <div className="flex gap-1">
           <button
-            onClick={() => { if (view !== "history") setSavedChats(loadChats()); setView(view === "history" ? "chat" : "history"); }}
+            onClick={() => { if (view !== "history") loadChatsFromServer().then(setSavedChats); setView(view === "history" ? "chat" : "history"); }}
             className={`text-xs px-2.5 py-1.5 rounded-lg transition-colors ${view === "history" ? "bg-white/20 text-white" : "bg-white/5 text-gray-400"}`}
           >
             History
@@ -592,6 +605,12 @@ export default function MobileApp() {
             className={`text-xs px-2.5 py-1.5 rounded-lg transition-colors ${view === "models" ? "bg-white/20 text-white" : "bg-white/5 text-gray-400"}`}
           >
             Models
+          </button>
+          <button
+            onClick={() => { saveCurrentChat(); }}
+            className="text-xs px-2.5 py-1.5 rounded-lg bg-white/5 text-gray-400"
+          >
+            Save
           </button>
           <button
             onClick={startNewChat}

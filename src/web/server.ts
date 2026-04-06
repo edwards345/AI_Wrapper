@@ -1,6 +1,7 @@
 import express from "express";
 import cors from "cors";
 import { join, dirname } from "node:path";
+import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { loadConfig } from "../config/loader.js";
 import { MODELS, findModel, type ProviderName } from "../engine/models.js";
@@ -259,6 +260,48 @@ app.post("/api/fetch-url", async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
   }
+});
+
+// Chat history — server-side file storage
+const CHATS_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "data");
+const CHATS_FILE = join(CHATS_DIR, "chats.json");
+
+function loadServerChats(): unknown[] {
+  try {
+    if (existsSync(CHATS_FILE)) return JSON.parse(readFileSync(CHATS_FILE, "utf-8"));
+  } catch { /* ignore */ }
+  return [];
+}
+
+function saveServerChats(chats: unknown[]) {
+  if (!existsSync(CHATS_DIR)) mkdirSync(CHATS_DIR, { recursive: true });
+  writeFileSync(CHATS_FILE, JSON.stringify(chats));
+}
+
+// GET /api/chats — load all saved chats
+app.get("/api/chats", (_req, res) => {
+  res.json(loadServerChats());
+});
+
+// POST /api/chats — save a chat (upsert by id)
+app.post("/api/chats", (req, res) => {
+  const chat = req.body;
+  if (!chat || !chat.id) {
+    res.status(400).json({ error: "chat with id is required" });
+    return;
+  }
+  const chats = loadServerChats().filter((c: any) => c.id !== chat.id);
+  chats.unshift(chat);
+  if (chats.length > 100) chats.length = 100;
+  saveServerChats(chats);
+  res.json({ ok: true });
+});
+
+// DELETE /api/chats/:id — delete a chat
+app.delete("/api/chats/:id", (req, res) => {
+  const chats = loadServerChats().filter((c: any) => c.id !== req.params.id);
+  saveServerChats(chats);
+  res.json({ ok: true });
 });
 
 // SPA fallback
