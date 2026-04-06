@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { fetchModels, runPrompt, fetchSummary } from "./api";
-import type { ModelsResponse, ProviderName, ProviderResult, ChatMessage, Attachment } from "./types";
+import type { ModelsResponse, ProviderName, ProviderResult, ChatMessage, SavedChat, Attachment } from "./types";
 
 /* ───────── Themes (compact) ───────── */
 
@@ -48,6 +48,19 @@ interface Turn {
 
 type MobileView = "chat" | "models" | "history";
 
+/* ───────── Chat History helpers ───────── */
+
+const STORAGE_KEY = "aiwrapper_chats";
+
+function loadChats(): SavedChat[] {
+  try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]"); }
+  catch { return []; }
+}
+
+function saveChats(chats: SavedChat[]) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(chats));
+}
+
 /* ───────── Mobile App ───────── */
 
 export default function MobileApp() {
@@ -64,6 +77,10 @@ export default function MobileApp() {
   const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set());
   const [view, setView] = useState<MobileView>("chat");
   const [attachments, setAttachments] = useState<Attachment[]>([]);
+
+  // Chat history
+  const [savedChats, setSavedChats] = useState<SavedChat[]>(loadChats());
+  const [currentChatId, setCurrentChatId] = useState<string | null>(null);
 
   const conversationRef = useRef<ChatMessage[]>([]);
   const allResults = useRef<ProviderResult[]>([]);
@@ -113,6 +130,56 @@ export default function MobileApp() {
 
   const toggleModel = (id: string) => {
     setSelectedModels((prev) => prev.includes(id) ? prev.filter((m) => m !== id) : [...prev, id]);
+  };
+
+  // Chat history functions
+  const saveCurrentChat = useCallback(() => {
+    if (conversationRef.current.length === 0) return;
+    const id = currentChatId || crypto.randomUUID();
+    const title = conversationRef.current[0]?.content.slice(0, 60) || "Untitled";
+    const chat: SavedChat = {
+      id, title, timestamp: Date.now(),
+      messages: conversationRef.current,
+      selectedModels,
+      systemPrompt: showSystem ? systemPrompt : undefined,
+    };
+    const chats = loadChats().filter((c) => c.id !== id);
+    chats.unshift(chat);
+    if (chats.length > 50) chats.length = 50;
+    saveChats(chats);
+    setSavedChats(chats);
+    setCurrentChatId(id);
+  }, [currentChatId, selectedModels, systemPrompt, showSystem]);
+
+  const startNewChat = () => {
+    if (conversationRef.current.length > 0) saveCurrentChat();
+    conversationRef.current = [];
+    allResults.current = [];
+    setProviderTurns({});
+    setSummary(null);
+    setConsensus(null);
+    setExpandedCards(new Set());
+    setCurrentChatId(null);
+    setPrompt("");
+    setView("chat");
+  };
+
+  const loadChat = (chat: SavedChat) => {
+    conversationRef.current = chat.messages;
+    setCurrentChatId(chat.id);
+    setSelectedModels(chat.selectedModels);
+    if (chat.systemPrompt) { setSystemPrompt(chat.systemPrompt); setShowSystem(true); }
+    setProviderTurns({});
+    setSummary(null);
+    setConsensus(null);
+    setView("chat");
+  };
+
+  const deleteChat = (id: string) => {
+    const chats = loadChats().filter((c) => c.id !== id);
+    saveChats(chats);
+    setSavedChats(chats);
+    if (currentChatId === id) startNewChat();
   };
 
   const activeProviders = Object.keys(providerTurns).filter((k) => providerTurns[k].length > 0);
@@ -178,6 +245,7 @@ export default function MobileApp() {
             conversationRef.current.push({ role: "user", content: userPrompt });
           }
           conversationRef.current.push({ role: "assistant", content: result.content });
+          saveCurrentChat();
         }
       },
       onResult: (result) => {
@@ -203,10 +271,12 @@ export default function MobileApp() {
             conversationRef.current.push({ role: "user", content: userPrompt });
           }
           conversationRef.current.push({ role: "assistant", content: result.content });
+          saveCurrentChat();
         }
       },
       onDone: async (results) => {
         setRunning(false);
+        if (conversationRef.current.length > 0) saveCurrentChat();
         setProviderTurns((prev) => {
           const next = { ...prev };
           for (const label of Object.keys(next)) {
@@ -227,7 +297,7 @@ export default function MobileApp() {
       },
       onError: (error) => { console.error(error); setRunning(false); },
     });
-  }, [prompt, systemPrompt, showSystem, selectedModels, running, attachments]);
+  }, [prompt, systemPrompt, showSystem, selectedModels, running, attachments, saveCurrentChat]);
 
   const handleSummarizeNow = useCallback(async () => {
     setProviderTurns((prev) => {
@@ -388,19 +458,47 @@ export default function MobileApp() {
         <h1 className="text-sm font-bold">AI Wrapper</h1>
         <div className="flex gap-1">
           <button
+            onClick={() => setView(view === "history" ? "chat" : "history")}
+            className={`text-xs px-2.5 py-1.5 rounded-lg transition-colors ${view === "history" ? "bg-white/20 text-white" : "bg-white/5 text-gray-400"}`}
+          >
+            History
+          </button>
+          <button
             onClick={() => setView(view === "models" ? "chat" : "models")}
             className={`text-xs px-2.5 py-1.5 rounded-lg transition-colors ${view === "models" ? "bg-white/20 text-white" : "bg-white/5 text-gray-400"}`}
           >
             Models
           </button>
           <button
-            onClick={() => { setProviderTurns({}); setSummary(null); setConsensus(null); conversationRef.current = []; allResults.current = []; setExpandedCards(new Set()); }}
+            onClick={startNewChat}
             className="text-xs px-2.5 py-1.5 rounded-lg bg-white/5 text-gray-400"
           >
             New
           </button>
         </div>
       </div>
+
+      {/* History view */}
+      {view === "history" && (
+        <div className="flex-1 overflow-y-auto p-4">
+          <p className="text-xs text-gray-500 mb-3">Previous Chats</p>
+          {savedChats.length === 0 && (
+            <p className="text-gray-600 text-sm">No saved chats yet.</p>
+          )}
+          {savedChats.map((chat) => (
+            <div key={chat.id}
+              className={`flex items-center justify-between px-3 py-3 rounded-xl mb-1.5 transition-colors ${
+                currentChatId === chat.id ? "bg-white/10" : "bg-gray-800/30"
+              }`}>
+              <div className="flex-1 min-w-0 mr-3" onClick={() => loadChat(chat)}>
+                <p className="text-sm text-gray-200 truncate">{chat.title}</p>
+                <p className="text-[10px] text-gray-500 mt-0.5">{new Date(chat.timestamp).toLocaleDateString()} {new Date(chat.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
+              </div>
+              <button onClick={() => deleteChat(chat.id)} className="text-gray-600 hover:text-red-400 text-sm px-2 shrink-0">×</button>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Models view */}
       {view === "models" && (
