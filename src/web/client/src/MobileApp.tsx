@@ -157,24 +157,36 @@ export default function MobileApp() {
     setSelectedModels((prev) => prev.includes(id) ? prev.filter((m) => m !== id) : [...prev, id]);
   };
 
-  // Chat history functions
+  // Chat history functions — use refs to avoid stale closures
+  const currentChatIdRef = useRef(currentChatId);
+  currentChatIdRef.current = currentChatId;
+  const selectedModelsRef = useRef(selectedModels);
+  selectedModelsRef.current = selectedModels;
+  const systemPromptRef = useRef(systemPrompt);
+  systemPromptRef.current = systemPrompt;
+  const showSystemRef = useRef(showSystem);
+  showSystemRef.current = showSystem;
+
   const saveCurrentChat = useCallback(() => {
     if (conversationRef.current.length === 0) return;
-    const id = currentChatId || crypto.randomUUID();
+    const id = currentChatIdRef.current || crypto.randomUUID();
     const title = conversationRef.current[0]?.content.slice(0, 60) || "Untitled";
     const chat: SavedChat = {
       id, title, timestamp: Date.now(),
-      messages: conversationRef.current,
-      selectedModels,
-      systemPrompt: showSystem ? systemPrompt : undefined,
+      messages: [...conversationRef.current],
+      selectedModels: selectedModelsRef.current,
+      systemPrompt: showSystemRef.current ? systemPromptRef.current : undefined,
     };
     const chats = loadChats().filter((c) => c.id !== id);
     chats.unshift(chat);
     if (chats.length > 50) chats.length = 50;
     saveChats(chats);
     setSavedChats(chats);
-    setCurrentChatId(id);
-  }, [currentChatId, selectedModels, systemPrompt, showSystem]);
+    if (!currentChatIdRef.current) {
+      currentChatIdRef.current = id;
+      setCurrentChatId(id);
+    }
+  }, []);
 
   const startNewChat = () => {
     if (conversationRef.current.length > 0) saveCurrentChat();
@@ -184,6 +196,7 @@ export default function MobileApp() {
     setSummary(null);
     setConsensus(null);
     setExpandedCards(new Set());
+    currentChatIdRef.current = null;
     setCurrentChatId(null);
     setPrompt("");
     setView("chat");
@@ -388,6 +401,7 @@ export default function MobileApp() {
         // All done or all possible results collected — trigger summary
         summarizeTriggered.current = true;
         setRunning(false);
+        if (conversationRef.current.length > 0) saveCurrentChat();
 
         // Clear any stuck streams
         const next = stillStreaming ? { ...current } : current;
@@ -578,7 +592,7 @@ export default function MobileApp() {
         </div>
         <div className="flex gap-1">
           <button
-            onClick={() => setView(view === "history" ? "chat" : "history")}
+            onClick={() => { if (view !== "history") setSavedChats(loadChats()); setView(view === "history" ? "chat" : "history"); }}
             className={`text-xs px-2.5 py-1.5 rounded-lg transition-colors ${view === "history" ? "bg-white/20 text-white" : "bg-white/5 text-gray-400"}`}
           >
             History
