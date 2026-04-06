@@ -90,25 +90,53 @@ export default function MobileApp() {
   const lastTokenTime = useRef<Record<string, number>>({});
 
   // Client-side streaming timeout
+  const [timedOutLabels, setTimedOutLabels] = useState<string[]>([]);
+
   useEffect(() => {
     const interval = setInterval(() => {
       const now = Date.now();
       setProviderTurns((prev) => {
         let changed = false;
         const next = { ...prev };
+        const newlyTimedOut: string[] = [];
         for (const label of Object.keys(next)) {
           const lt = lastTokenTime.current[label];
           if (next[label].some((t) => t.streaming) && lt && now - lt > 120_000) {
             changed = true;
             next[label] = next[label].map((t) => t.streaming ? { ...t, streaming: false } : t);
             delete lastTokenTime.current[label];
+            newlyTimedOut.push(label);
           }
+        }
+        if (newlyTimedOut.length > 0) {
+          setTimedOutLabels((prev) => [...prev, ...newlyTimedOut]);
         }
         return changed ? next : prev;
       });
     }, 5_000);
     return () => clearInterval(interval);
   }, []);
+
+  // Auto-summarize after timeout clears all remaining streams
+  useEffect(() => {
+    if (timedOutLabels.length === 0) return;
+    setTimedOutLabels([]);
+
+    // Check if all streams are now done
+    const stillStreaming = Object.values(providerTurns).some((turns) => turns.some((t) => t.streaming));
+    if (stillStreaming) return;
+
+    setRunning(false);
+    const results = allResults.current;
+    const successes = results.filter((r) => r.status === "success");
+    if (successes.length >= 2 && !summary) {
+      setSummaryLoading(true);
+      fetchSummary(lastPrompt.current, results, "combined").then((content) => {
+        setSummary({ type: "combined", content });
+        setExpandedCards((prev) => new Set([...prev, "__summary"]));
+      }).catch(console.error).finally(() => setSummaryLoading(false));
+    }
+  }, [timedOutLabels, providerTurns, summary]);
 
   useEffect(() => {
     fetchModels().then((data) => {
@@ -551,7 +579,7 @@ export default function MobileApp() {
 
           {/* Waiting spinner */}
           {running && activeProviders.length === 0 && (
-            <div className="flex flex-col items-center justify-center h-full gap-3">
+            <div className="flex flex-col items-center justify-center py-16 gap-3">
               <div className="relative w-10 h-10">
                 <div className="absolute inset-0 rounded-full border-2 border-gray-700" />
                 <div className="absolute inset-0 rounded-full border-2 border-t-[#d4a27a] border-r-[#10a37f] border-b-[#8ab4f8] border-l-[#f97316] animate-spin" />
@@ -589,7 +617,7 @@ export default function MobileApp() {
                 <span className="text-gray-500 text-xs">{expandedCards.has("__summary") ? "▼" : "▶"}</span>
               </button>
               {expandedCards.has("__summary") && (
-                <div className="bg-[#faf6f1] px-4 py-3">
+                <div className="bg-[#faf6f1] px-3 py-2.5 max-h-[50vh] overflow-y-auto">
                   <div className={THEMES.claude.prose}>
                     <ReactMarkdown remarkPlugins={[remarkGfm]} components={{
                       code({ className, children, ...props }) {
@@ -612,7 +640,7 @@ export default function MobileApp() {
                 <span className="text-gray-500 text-xs">{expandedCards.has("__consensus") ? "▼" : "▶"}</span>
               </button>
               {expandedCards.has("__consensus") && (
-                <div className="bg-[#faf6f1] px-4 py-3">
+                <div className="bg-[#faf6f1] px-3 py-2.5 max-h-[50vh] overflow-y-auto">
                   <div className={THEMES.claude.prose}>
                     <ReactMarkdown remarkPlugins={[remarkGfm]} components={{
                       code({ className, children, ...props }) {
@@ -667,7 +695,7 @@ export default function MobileApp() {
                   </div>
                 </button>
                 {isExpanded && (
-                  <div className={`${theme.bg} px-4 py-3 space-y-2 max-h-[70vh] overflow-y-auto`}>
+                  <div className={`${theme.bg} px-3 py-2.5 space-y-2 max-h-[50vh] overflow-y-auto`}>
                     {turns.map((turn, i) => {
                       if (turn.role === "user") return (
                         <div key={i} className="bg-white/10 rounded-xl px-3 py-2 ml-6">

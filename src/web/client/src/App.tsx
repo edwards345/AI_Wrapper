@@ -201,6 +201,7 @@ export default function App() {
   // Client-side streaming timeout — mark streams as done if no token in 120s
   const lastTokenTime = useRef<Record<string, number>>({});
   const STREAM_IDLE_TIMEOUT = 120_000;
+  const [timedOutLabels, setTimedOutLabels] = useState<string[]>([]);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -208,6 +209,7 @@ export default function App() {
       setProviderTurns((prev) => {
         let changed = false;
         const next = { ...prev };
+        const newlyTimedOut: string[] = [];
         for (const label of Object.keys(next)) {
           const lastTime = lastTokenTime.current[label];
           const hasStreaming = next[label].some((t) => t.streaming);
@@ -217,13 +219,37 @@ export default function App() {
               t.streaming ? { ...t, streaming: false } : t
             );
             delete lastTokenTime.current[label];
+            newlyTimedOut.push(label);
           }
+        }
+        if (newlyTimedOut.length > 0) {
+          setTimedOutLabels((prev) => [...prev, ...newlyTimedOut]);
         }
         return changed ? next : prev;
       });
     }, 5_000);
     return () => clearInterval(interval);
   }, []);
+
+  // Auto-summarize after timeout clears all remaining streams
+  useEffect(() => {
+    if (timedOutLabels.length === 0) return;
+    setTimedOutLabels([]);
+
+    const stillStreaming = Object.values(providerTurns).some((turns) => turns.some((t) => t.streaming));
+    if (stillStreaming) return;
+
+    setRunning(false);
+    const results = allResults.current;
+    const successes = results.filter((r) => r.status === "success");
+    if (successes.length >= 2 && !summary) {
+      setSummaryLoading(true);
+      fetchSummary(lastPrompt.current, results, "combined").then((content) => {
+        setSummary({ type: "combined", content });
+        setExpandedCards((prev) => new Set([...prev, "__summary"]));
+      }).catch(console.error).finally(() => setSummaryLoading(false));
+    }
+  }, [timedOutLabels, providerTurns, summary]);
 
   useEffect(() => {
     fetchModels().then((data) => {
