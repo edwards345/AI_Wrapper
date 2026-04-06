@@ -100,6 +100,7 @@ export default function MobileApp() {
   const conversationRef = useRef<ChatMessage[]>([]);
   const allResults = useRef<ProviderResult[]>([]);
   const lastPrompt = useRef("");
+  const expectedModelsCount = useRef(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const lastTokenTime = useRef<Record<string, number>>({});
@@ -234,6 +235,7 @@ export default function MobileApp() {
     setConsensus(null);
     allResults.current = [];
     lastPrompt.current = prompt;
+    expectedModelsCount.current = selectedModels.length;
     const userPrompt = prompt;
     const currentAttachments = attachments.length > 0 ? [...attachments] : undefined;
     setPrompt("");
@@ -397,8 +399,10 @@ export default function MobileApp() {
 
       const activeLabels = Object.keys(current).filter((k) => current[k].length > 0);
       if (activeLabels.length === 0) return;
+      // Wait until we've heard from all expected models AND none are still streaming
+      if (activeLabels.length < expectedModelsCount.current) return;
       const stillStreaming = Object.values(current).some((turns) => turns.some((t) => t.streaming));
-      if (stillStreaming) return; // Wait for ALL models to finish
+      if (stillStreaming) return;
 
       summarizeTriggered.current = true;
       setRunning(false);

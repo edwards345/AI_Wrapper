@@ -194,6 +194,7 @@ export default function App() {
   const conversationRef = useRef<ChatMessage[]>([]);
   const allResults = useRef<ProviderResult[]>([]);
   const lastPrompt = useRef("");
+  const expectedModelsCount = useRef(0);
 
   // Chat history
   const [savedChats, setSavedChats] = useState<SavedChat[]>([]);
@@ -348,6 +349,7 @@ export default function App() {
     setConsensus(null);
     allResults.current = [];
     lastPrompt.current = prompt;
+    expectedModelsCount.current = selectedModels.length;
 
     const userPrompt = prompt;
     const currentAttachments = attachments.length > 0 ? [...attachments] : undefined;
@@ -547,8 +549,10 @@ export default function App() {
 
       const activeLabels = Object.keys(current).filter((k) => current[k].length > 0);
       if (activeLabels.length === 0) return;
+      // Wait until we've heard from all expected models AND none are still streaming
+      if (activeLabels.length < expectedModelsCount.current) return;
       const stillStreaming = Object.values(current).some((turns) => turns.some((t) => t.streaming));
-      if (stillStreaming) return; // Wait for ALL models to finish
+      if (stillStreaming) return;
 
       summarizeTriggered.current = true;
       setRunning(false);
