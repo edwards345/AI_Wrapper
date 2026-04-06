@@ -444,9 +444,9 @@ export default function MobileApp() {
 
       {/* Chat view */}
       {view === "chat" && (
-        <div ref={scrollRef} className="flex-1 overflow-y-auto p-3 space-y-3">
+        <div ref={scrollRef} className="flex-1 overflow-y-auto p-3 space-y-3 min-h-0">
           {activeProviders.length === 0 && !running && !summary && (
-            <div className="flex items-center justify-center h-full">
+            <div className="flex items-center justify-center py-12">
               <p className="text-gray-600 text-sm text-center">Select models and enter a prompt</p>
             </div>
           )}
