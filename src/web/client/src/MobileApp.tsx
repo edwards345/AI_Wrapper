@@ -340,24 +340,50 @@ export default function MobileApp() {
     });
   }, [prompt, systemPrompt, showSystem, selectedModels, running, attachments, saveCurrentChat]);
 
+  // Build results from providerTurns (fallback when onStreamEnd events are lost)
+  const buildResultsFromTurns = useCallback((): ProviderResult[] => {
+    const results: ProviderResult[] = [];
+    for (const [label, turns] of Object.entries(providerTurns)) {
+      const lastAssistant = [...turns].reverse().find((t) => t.role === "assistant");
+      if (!lastAssistant) continue;
+      if (lastAssistant.result) {
+        // Use the actual result if available
+        if (!allResults.current.some((r) => r.label === label)) {
+          allResults.current.push(lastAssistant.result);
+        }
+        results.push(lastAssistant.result);
+      } else if (lastAssistant.content) {
+        // Build a synthetic result from streamed content
+        const synth: ProviderResult = {
+          provider: lastAssistant.provider || "claude",
+          model: "", label, status: "success",
+          content: lastAssistant.content, latencyMs: 0,
+        };
+        if (!allResults.current.some((r) => r.label === label)) {
+          allResults.current.push(synth);
+        }
+        results.push(synth);
+      }
+    }
+    return results;
+  }, [providerTurns]);
+
   // Fallback: auto-summarize if all models finished but onDone never fired
   const summarizeTriggered = useRef(false);
   useEffect(() => {
-    // Only run if we're supposedly still running, have results, and nothing is streaming
     if (!running) return;
-    if (allResults.current.length === 0) return;
+    const activeCount = Object.keys(providerTurns).filter((k) => providerTurns[k].length > 0).length;
+    if (activeCount === 0) return;
     const stillStreaming = Object.values(providerTurns).some((turns) => turns.some((t) => t.streaming));
     if (stillStreaming) return;
-    // Check that we have at least as many results as active providers (all done)
-    const activeCount = Object.keys(providerTurns).filter((k) => providerTurns[k].length > 0).length;
-    if (activeCount === 0 || allResults.current.length < activeCount) return;
     if (summarizeTriggered.current) return;
 
+    // All active providers have finished (no streaming), trigger summary
     summarizeTriggered.current = true;
     setRunning(false);
     if (conversationRef.current.length > 0) saveCurrentChat();
 
-    const results = allResults.current;
+    const results = buildResultsFromTurns();
     const successes = results.filter((r) => r.status === "success");
     if (successes.length >= 2 && !summary) {
       setSummaryLoading(true);
@@ -366,7 +392,7 @@ export default function MobileApp() {
         setExpandedCards((prev) => new Set([...prev, "__summary"]));
       }).catch(console.error).finally(() => setSummaryLoading(false));
     }
-  }, [running, providerTurns, summary, saveCurrentChat]);
+  }, [running, providerTurns, summary, saveCurrentChat, buildResultsFromTurns]);
 
   // Reset the trigger when a new prompt is sent
   useEffect(() => {
@@ -382,7 +408,7 @@ export default function MobileApp() {
       return next;
     });
     setRunning(false);
-    const results = allResults.current;
+    const results = buildResultsFromTurns();
     if (results.filter((r) => r.status === "success").length >= 2) {
       setSummaryLoading(true);
       try {
@@ -395,7 +421,7 @@ export default function MobileApp() {
   }, []);
 
   const handleConsensus = useCallback(async () => {
-    const results = allResults.current;
+    const results = buildResultsFromTurns();
     if (results.filter((r) => r.status === "success").length < 2) return;
     setSummaryLoading(true);
     try {

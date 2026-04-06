@@ -495,21 +495,46 @@ export default function App() {
   );
 
   // Fallback: auto-summarize if all models finished but onDone never fired
+  // Build results from providerTurns (fallback when onStreamEnd events are lost)
+  const buildResultsFromTurns = useCallback((): ProviderResult[] => {
+    const results: ProviderResult[] = [];
+    for (const [label, turns] of Object.entries(providerTurns)) {
+      const lastAssistant = [...turns].reverse().find((t) => t.role === "assistant");
+      if (!lastAssistant) continue;
+      if (lastAssistant.result) {
+        if (!allResults.current.some((r) => r.label === label)) {
+          allResults.current.push(lastAssistant.result);
+        }
+        results.push(lastAssistant.result);
+      } else if (lastAssistant.content) {
+        const synth: ProviderResult = {
+          provider: lastAssistant.provider || "claude",
+          model: "", label, status: "success",
+          content: lastAssistant.content, latencyMs: 0,
+        };
+        if (!allResults.current.some((r) => r.label === label)) {
+          allResults.current.push(synth);
+        }
+        results.push(synth);
+      }
+    }
+    return results;
+  }, [providerTurns]);
+
   const summarizeTriggered = useRef(false);
   useEffect(() => {
     if (!running) return;
-    if (allResults.current.length === 0) return;
+    const activeCount = Object.keys(providerTurns).filter((k) => providerTurns[k].length > 0).length;
+    if (activeCount === 0) return;
     const stillStreaming = Object.values(providerTurns).some((turns) => turns.some((t) => t.streaming));
     if (stillStreaming) return;
-    const activeCount = Object.keys(providerTurns).filter((k) => providerTurns[k].length > 0).length;
-    if (activeCount === 0 || allResults.current.length < activeCount) return;
     if (summarizeTriggered.current) return;
 
     summarizeTriggered.current = true;
     setRunning(false);
     if (conversationRef.current.length > 0) saveCurrentChat();
 
-    const results = allResults.current;
+    const results = buildResultsFromTurns();
     const successes = results.filter((r) => r.status === "success");
     if (successes.length >= 2 && !summary) {
       setSummaryLoading(true);
@@ -518,7 +543,7 @@ export default function App() {
         setExpandedCards((prev) => new Set([...prev, "__summary"]));
       }).catch(console.error).finally(() => setSummaryLoading(false));
     }
-  }, [running, providerTurns, summary, saveCurrentChat]);
+  }, [running, providerTurns, summary, saveCurrentChat, buildResultsFromTurns]);
 
   useEffect(() => {
     if (running) summarizeTriggered.current = false;
@@ -538,7 +563,7 @@ export default function App() {
     });
     setRunning(false);
 
-    const results = allResults.current;
+    const results = buildResultsFromTurns();
     const successes = results.filter((r) => r.status === "success");
     if (successes.length >= 2) {
       setSummaryLoading(true);
@@ -551,11 +576,11 @@ export default function App() {
       }
       setSummaryLoading(false);
     }
-  }, []);
+  }, [buildResultsFromTurns]);
 
   // Manual consensus comparison
   const handleConsensus = useCallback(async () => {
-    const results = allResults.current;
+    const results = buildResultsFromTurns();
     const successes = results.filter((r) => r.status === "success");
     if (successes.length < 2) return;
 
@@ -568,7 +593,7 @@ export default function App() {
       console.error(err);
     }
     setSummaryLoading(false);
-  }, []);
+  }, [buildResultsFromTurns]);
 
   const TEXT_EXTENSIONS = new Set([
     "text/plain", "text/csv", "text/markdown", "text/html", "text/xml",
