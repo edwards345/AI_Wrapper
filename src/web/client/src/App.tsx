@@ -1001,63 +1001,54 @@ export default function App() {
 
         {/* Results */}
         <div className="flex-1 overflow-y-auto p-3 md:p-5">
-          {activeProviders.length === 0 && !running && !summary && (
-            <div className="flex items-center justify-center h-full">
-              <div className="text-center">
-                <p className="text-gray-600 text-lg">Select models and enter a prompt</p>
-                <p className="text-gray-700 text-sm mt-1">Summary and consensus appear automatically</p>
-              </div>
-            </div>
-          )}
+          {/* Status bar */}
+          {(() => {
+            const isWaiting = running || anyStreaming;
+            const isComplete = !running && !anyStreaming && !summaryLoading && activeProviders.length > 0;
+            const isEmpty = activeProviders.length === 0 && !running && !summary;
 
-          {/* Waiting for first response */}
-          {running && activeProviders.length === 0 && (
-            <div className="flex items-center justify-center h-full">
-              <div className="flex flex-col items-center gap-4">
-                <div className="relative w-12 h-12">
-                  <div className="absolute inset-0 rounded-full border-2 border-gray-700" />
-                  <div className="absolute inset-0 rounded-full border-2 border-t-[#d4a27a] border-r-[#10a37f] border-b-[#8ab4f8] border-l-[#f97316] animate-spin" />
+            if (isEmpty) return (
+              <div className="flex items-center justify-center h-full">
+                <div className="text-center">
+                  <p className="text-gray-600 text-lg">Select models and enter a prompt</p>
+                  <p className="text-gray-700 text-sm mt-1">Summary and consensus appear automatically</p>
                 </div>
-                <p className="text-gray-400 text-sm animate-pulse">Waiting for responses...</p>
               </div>
-            </div>
-          )}
+            );
 
-          {/* Still waiting for models / summarize button */}
-          {(running || anyStreaming || summaryLoading) && activeProviders.length > 0 && (
-            <div className="flex items-center gap-3 mb-4 px-2">
-              <div className="w-4 h-4 border-2 border-t-[#d4a27a] border-r-[#10a37f] border-b-[#8ab4f8] border-l-[#f97316] rounded-full animate-spin shrink-0" />
-              <span className="text-gray-400 text-sm">{summaryLoading ? "Generating summary..." : anyStreaming ? "Waiting for all models..." : "Processing..."}</span>
-              {allResults.current.length >= 2 && (
-                <button
-                  onClick={handleSummarizeNow}
-                  className="bg-white/10 hover:bg-white/15 text-white text-xs px-3 py-1.5 rounded-lg transition-colors whitespace-nowrap"
-                >
-                  Summarize Now
-                </button>
-              )}
-            </div>
-          )}
-
-          {/* Compare button — available after models finish, if no consensus yet */}
-          {!running && !anyStreaming && !consensus && !summaryLoading && activeProviders.length >= 2 && (
-            <div className="flex items-center gap-3 mb-4 px-2">
-              <button
-                onClick={handleConsensus}
-                className="bg-white/10 hover:bg-white/15 text-white text-xs px-3 py-1.5 rounded-lg transition-colors"
-              >
-                Compare &amp; Find Consensus
-              </button>
-            </div>
-          )}
-
-          {/* Loading indicator while generating summaries */}
-          {summaryLoading && (
-            <div className="flex items-center gap-3 mb-5 px-2">
-              <div className="w-4 h-4 border-2 border-[#d4a27a] border-t-transparent rounded-full animate-spin" />
-              <span className="text-gray-400 text-sm">Generating summary and consensus...</span>
-            </div>
-          )}
+            return (
+              <div className="flex items-center gap-3 mb-4 px-2">
+                {(isWaiting || summaryLoading) && (
+                  <div className="w-4 h-4 border-2 border-t-[#d4a27a] border-r-[#10a37f] border-b-[#8ab4f8] border-l-[#f97316] rounded-full animate-spin shrink-0" />
+                )}
+                {isComplete && (
+                  <span className="text-green-500 text-sm shrink-0">&#x2713;</span>
+                )}
+                <span className={`text-sm ${isComplete ? "text-green-500" : "text-gray-400"}`}>
+                  {summaryLoading ? "Generating summary..."
+                    : isWaiting ? "Waiting on AIs..."
+                    : isComplete ? "Complete"
+                    : ""}
+                </span>
+                {isWaiting && activeProviders.length >= 2 && (
+                  <button
+                    onClick={handleSummarizeNow}
+                    className="bg-white/10 hover:bg-white/15 text-white text-xs px-3 py-1.5 rounded-lg transition-colors whitespace-nowrap ml-auto"
+                  >
+                    Summarize Now
+                  </button>
+                )}
+                {isComplete && !consensus && activeProviders.length >= 2 && (
+                  <button
+                    onClick={handleConsensus}
+                    className="bg-white/10 hover:bg-white/15 text-white text-xs px-3 py-1.5 rounded-lg transition-colors whitespace-nowrap ml-auto"
+                  >
+                    Compare
+                  </button>
+                )}
+              </div>
+            );
+          })()}
 
           {/* Combined Summary — collapsible */}
           {summary && (

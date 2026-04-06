@@ -686,43 +686,45 @@ export default function MobileApp() {
       {/* Chat view */}
       {view === "chat" && (
         <div ref={scrollRef} className="flex-1 overflow-y-auto p-3 space-y-3 min-h-0">
-          {activeProviders.length === 0 && !running && !summary && (
-            <div className="flex items-center justify-center py-12">
-              <p className="text-gray-600 text-sm text-center">Select models and enter a prompt</p>
-            </div>
-          )}
+          {/* Status bar */}
+          {(() => {
+            const isWaiting = running || anyStreaming;
+            const isComplete = !running && !anyStreaming && !summaryLoading && activeProviders.length > 0;
+            const isEmpty = activeProviders.length === 0 && !running && !summary;
 
-          {/* Waiting spinner */}
-          {running && activeProviders.length === 0 && (
-            <div className="flex flex-col items-center justify-center py-16 gap-3">
-              <div className="relative w-10 h-10">
-                <div className="absolute inset-0 rounded-full border-2 border-gray-700" />
-                <div className="absolute inset-0 rounded-full border-2 border-t-[#d4a27a] border-r-[#10a37f] border-b-[#8ab4f8] border-l-[#f97316] animate-spin" />
+            if (isEmpty) return (
+              <div className="flex items-center justify-center py-12">
+                <p className="text-gray-600 text-sm text-center">Select models and enter a prompt</p>
               </div>
-              <p className="text-gray-400 text-xs animate-pulse">Waiting for responses...</p>
-            </div>
-          )}
+            );
 
-          {/* Still waiting + summarize button */}
-          {(running || anyStreaming || summaryLoading) && activeProviders.length > 0 && (
-            <div className="flex items-center gap-2 px-1">
-              <div className="w-3.5 h-3.5 border-2 border-t-[#d4a27a] border-r-[#10a37f] border-b-[#8ab4f8] border-l-[#f97316] rounded-full animate-spin shrink-0" />
-              <span className="text-gray-400 text-xs">{summaryLoading ? "Generating summary..." : anyStreaming ? "Waiting..." : "Processing..."}</span>
-              {!summaryLoading && activeProviders.length >= 2 && (
-                <button onClick={handleSummarizeNow} className="bg-white/10 text-white text-xs px-2.5 py-1 rounded-lg ml-auto">
-                  Summarize Now
-                </button>
-              )}
-            </div>
-          )}
-
-          {/* Summary loading (standalone, when no other spinner showing) */}
-          {summaryLoading && activeProviders.length === 0 && (
-            <div className="flex items-center gap-2 px-1">
-              <div className="w-3.5 h-3.5 border-2 border-[#d4a27a] border-t-transparent rounded-full animate-spin" />
-              <span className="text-gray-400 text-xs">Generating summary...</span>
-            </div>
-          )}
+            return (
+              <div className="flex items-center gap-2 px-1 mb-2">
+                {(isWaiting || summaryLoading) && (
+                  <div className="w-3.5 h-3.5 border-2 border-t-[#d4a27a] border-r-[#10a37f] border-b-[#8ab4f8] border-l-[#f97316] rounded-full animate-spin shrink-0" />
+                )}
+                {isComplete && (
+                  <span className="text-green-500 text-xs shrink-0">&#x2713;</span>
+                )}
+                <span className={`text-xs ${isComplete ? "text-green-500" : "text-gray-400"}`}>
+                  {summaryLoading ? "Generating summary..."
+                    : isWaiting ? "Waiting on AIs..."
+                    : isComplete ? "Complete"
+                    : ""}
+                </span>
+                {isWaiting && activeProviders.length >= 2 && (
+                  <button onClick={handleSummarizeNow} className="bg-white/10 text-white text-xs px-2.5 py-1 rounded-lg ml-auto">
+                    Summarize Now
+                  </button>
+                )}
+                {isComplete && !consensus && activeProviders.length >= 2 && (
+                  <button onClick={handleConsensus} className="bg-white/10 text-white text-xs px-2.5 py-1 rounded-lg ml-auto">
+                    Compare
+                  </button>
+                )}
+              </div>
+            );
+          })()}
 
           {/* Summary */}
           {summary && (
@@ -770,12 +772,6 @@ export default function MobileApp() {
             </div>
           )}
 
-          {/* Compare button */}
-          {!running && !anyStreaming && !consensus && !summaryLoading && allResults.current.length >= 2 && (
-            <button onClick={handleConsensus} className="bg-white/10 text-white text-xs px-3 py-2 rounded-lg w-full">
-              Compare &amp; Find Consensus
-            </button>
-          )}
 
           {/* Provider responses */}
           {activeProviders.map((label) => {
