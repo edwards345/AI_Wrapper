@@ -580,7 +580,7 @@ export default function App() {
     });
     setRunning(false);
 
-    const results = collectResults(providerTurns);
+    const results = collectResults(providerTurnsRef.current);
     const successes = results.filter((r) => r.status === "success");
     if (successes.length >= 2) {
       setSummaryLoading(true);
@@ -593,12 +593,11 @@ export default function App() {
       }
       setSummaryLoading(false);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [providerTurns]);
+  }, []);
 
   // Manual consensus comparison
   const handleConsensus = useCallback(async () => {
-    const results = collectResults(providerTurns);
+    const results = collectResults(providerTurnsRef.current);
     const successes = results.filter((r) => r.status === "success");
     if (successes.length < 2) return;
 
@@ -611,8 +610,7 @@ export default function App() {
       console.error(err);
     }
     setSummaryLoading(false);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [providerTurns]);
+  }, []);
 
   const TEXT_EXTENSIONS = new Set([
     "text/plain", "text/csv", "text/markdown", "text/html", "text/xml",

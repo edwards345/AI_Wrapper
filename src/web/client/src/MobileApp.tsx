@@ -421,7 +421,7 @@ export default function MobileApp() {
       return next;
     });
     setRunning(false);
-    const results = collectResults(providerTurns);
+    const results = collectResults(providerTurnsRef.current);
     if (results.filter((r) => r.status === "success").length >= 2) {
       setSummaryLoading(true);
       try {
@@ -431,11 +431,10 @@ export default function MobileApp() {
       } catch (err) { console.error(err); }
       setSummaryLoading(false);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [providerTurns]);
+  }, []);
 
   const handleConsensus = useCallback(async () => {
-    const results = collectResults(providerTurns);
+    const results = collectResults(providerTurnsRef.current);
     if (results.filter((r) => r.status === "success").length < 2) return;
     setSummaryLoading(true);
     try {
