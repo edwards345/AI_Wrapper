@@ -181,6 +181,7 @@ export default function App() {
   const [systemPrompt, setSystemPrompt] = useState("");
   const [showSystem, setShowSystem] = useState(false);
   const [running, setRunning] = useState(false);
+  const [completed, setCompleted] = useState(false);
 
   // Per-provider turn history: provider -> Turn[]
   const [providerTurns, setProviderTurns] = useState<Record<string, Turn[]>>({});
@@ -342,6 +343,7 @@ export default function App() {
     if (!prompt.trim() || running) return;
 
     setRunning(true);
+    setCompleted(false);
     setSummary(null);
     setConsensus(null);
     allResults.current = [];
@@ -550,6 +552,7 @@ export default function App() {
 
       summarizeTriggered.current = true;
       setRunning(false);
+      setCompleted(true);
 
       const results = collectResults(current);
       const successes = results.filter((r) => r.status === "success");
@@ -993,8 +996,8 @@ export default function App() {
         <div className="flex-1 overflow-y-auto p-3 md:p-5">
           {/* Status bar */}
           {(() => {
-            const isWaiting = running || anyStreaming;
-            const isComplete = !running && !anyStreaming && !summaryLoading && activeProviders.length > 0;
+            const isWaiting = (running || anyStreaming) && !completed;
+            const isComplete = completed && !summaryLoading;
             const isEmpty = activeProviders.length === 0 && !running && !summary;
 
             if (isEmpty) return (

@@ -79,6 +79,7 @@ export default function MobileApp() {
   const [systemPrompt, setSystemPrompt] = useState("");
   const [showSystem, setShowSystem] = useState(false);
   const [running, setRunning] = useState(false);
+  const [completed, setCompleted] = useState(false);
   const [providerTurns, setProviderTurns] = useState<Record<string, Turn[]>>({});
   const [summary, setSummary] = useState<{ type: string; content: string } | null>(null);
   const [consensus, setConsensus] = useState<{ type: string; content: string } | null>(null);
@@ -228,6 +229,7 @@ export default function MobileApp() {
   const handleRun = useCallback(() => {
     if (!prompt.trim() || running) return;
     setRunning(true);
+    setCompleted(false);
     setSummary(null);
     setConsensus(null);
     allResults.current = [];
@@ -400,6 +402,7 @@ export default function MobileApp() {
 
       summarizeTriggered.current = true;
       setRunning(false);
+      setCompleted(true);
       if (conversationRef.current.length > 0) saveCurrentChat();
 
       const results = collectResults(current);
@@ -678,8 +681,8 @@ export default function MobileApp() {
         <div ref={scrollRef} className="flex-1 overflow-y-auto p-3 space-y-3 min-h-0">
           {/* Status bar */}
           {(() => {
-            const isWaiting = running || anyStreaming;
-            const isComplete = !running && !anyStreaming && !summaryLoading && activeProviders.length > 0;
+            const isWaiting = (running || anyStreaming) && !completed;
+            const isComplete = completed && !summaryLoading;
             const isEmpty = activeProviders.length === 0 && !running && !summary;
 
             if (isEmpty) return (
