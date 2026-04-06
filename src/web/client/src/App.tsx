@@ -198,6 +198,18 @@ export default function App() {
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Geolocation
+  const [location, setLocation] = useState<{ lat: number; lon: number } | null>(null);
+  useEffect(() => {
+    if ("geolocation" in navigator) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => setLocation({ lat: pos.coords.latitude, lon: pos.coords.longitude }),
+        () => {},
+        { enableHighAccuracy: false, timeout: 10_000 }
+      );
+    }
+  }, []);
+
   // Client-side streaming timeout — mark streams as done if no token in 120s
   const lastTokenTime = useRef<Record<string, number>>({});
   const STREAM_IDLE_TIMEOUT = 120_000;
@@ -334,9 +346,13 @@ export default function App() {
 
     // User turns are added per-provider when streaming/results arrive (keyed by label)
 
+    // Build system prompt with location context
+    const locationCtx = location ? `User's current location: ${location.lat.toFixed(4)}, ${location.lon.toFixed(4)}. Use this for context if relevant to the question.` : "";
+    const fullSystemPrompt = [locationCtx, showSystem ? systemPrompt : ""].filter(Boolean).join("\n\n") || undefined;
+
     const cancel = runPrompt({
       prompt: userPrompt,
-      systemPrompt: showSystem ? systemPrompt : undefined,
+      systemPrompt: fullSystemPrompt,
       messages: conversationRef.current.length > 0 ? conversationRef.current : undefined,
       attachments: currentAttachments,
       models: selectedModels.length > 0 ? selectedModels : undefined,

@@ -89,6 +89,18 @@ export default function MobileApp() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const lastTokenTime = useRef<Record<string, number>>({});
 
+  // Geolocation
+  const [location, setLocation] = useState<{ lat: number; lon: number } | null>(null);
+  useEffect(() => {
+    if ("geolocation" in navigator) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => setLocation({ lat: pos.coords.latitude, lon: pos.coords.longitude }),
+        () => {}, // silently fail
+        { enableHighAccuracy: false, timeout: 10_000 }
+      );
+    }
+  }, []);
+
   // Fix mobile viewport height — window.innerHeight is the only reliable value
   const [viewportHeight, setViewportHeight] = useState(window.innerHeight);
   useEffect(() => {
@@ -211,9 +223,13 @@ export default function MobileApp() {
     setAttachments([]);
     setView("chat");
 
+    // Build system prompt with location context
+    const locationCtx = location ? `User's current location: ${location.lat.toFixed(4)}, ${location.lon.toFixed(4)}. Use this for context if relevant to the question.` : "";
+    const fullSystemPrompt = [locationCtx, showSystem ? systemPrompt : ""].filter(Boolean).join("\n\n") || undefined;
+
     runPrompt({
       prompt: userPrompt,
-      systemPrompt: showSystem ? systemPrompt : undefined,
+      systemPrompt: fullSystemPrompt,
       messages: conversationRef.current.length > 0 ? conversationRef.current : undefined,
       attachments: currentAttachments,
       models: selectedModels.length > 0 ? selectedModels : undefined,
@@ -556,7 +572,10 @@ export default function MobileApp() {
     <div className="flex flex-col bg-gray-950 text-gray-100 overflow-hidden" style={{ height: viewportHeight }}>
       {/* Top nav */}
       <div className="flex items-center justify-between px-3 py-2.5 bg-[#0c0c0e] border-b border-gray-800/50 shrink-0">
-        <h1 className="text-sm font-bold">AI Wrapper</h1>
+        <div className="flex items-center gap-2">
+          <h1 className="text-sm font-bold">AI Wrapper</h1>
+          {location && <span className="text-[9px] text-green-500" title={`${location.lat.toFixed(4)}, ${location.lon.toFixed(4)}`}>&#x1F4CD;</span>}
+        </div>
         <div className="flex gap-1">
           <button
             onClick={() => setView(view === "history" ? "chat" : "history")}
